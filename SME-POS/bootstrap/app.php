@@ -16,6 +16,10 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\HandleInertiaRequests::class,
         ]);
 
+        // Already-authenticated users hitting /login go to their dashboard.
+        // Relative path keeps them on their current tenant subdomain.
+        $middleware->redirectUsersTo('/dashboard');
+
         // ResolveTenant is applied per-route-group in routes/web.php, not
         // globally, so central onboarding routes run without a tenant.
     })

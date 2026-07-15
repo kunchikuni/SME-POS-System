@@ -6,6 +6,7 @@ use App\Domain\Tenancy\TenantContext;
 use App\Models\Tenant;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\URL;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -44,6 +45,12 @@ class ResolveTenant
         abort_if($tenant === null, 404, 'Unknown tenant.');
 
         $this->context->set($tenant);
+
+        // The {tenant} domain segment is a route parameter. Without a default,
+        // route('login') / route('dashboard') throw "Missing parameter: tenant".
+        // Setting it here lets every named route on the subdomain resolve
+        // without passing the tenant explicitly everywhere.
+        URL::defaults(['tenant' => $subdomain]);
 
         // Make the resolved tenant available to Inertia shared props / views.
         $request->attributes->set('tenant', $tenant);
