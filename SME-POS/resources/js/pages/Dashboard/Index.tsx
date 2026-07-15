@@ -1,4 +1,4 @@
-import { Head } from "@inertiajs/react";
+import { Head, Link } from "@inertiajs/react";
 import AppLayout from "../../Layouts/AppLayout";
 
 /**
@@ -38,8 +38,22 @@ export default function DashboardIndex() {
       <div className="mt-6 rounded-xl border border-dashed border-hairline bg-surface p-8 text-center">
         <p className="font-medium">Add your first products to start selling</p>
         <p className="mt-1 text-sm text-muted">
-          Import a catalogue or add items one by one. Coming in the next release.
+          Import a catalogue or add items one by one.
         </p>
+        <div className="mt-4 flex justify-center gap-2">
+          <Link
+            href="/products/create"
+            className="rounded-lg bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600"
+          >
+            Add product
+          </Link>
+          <Link
+            href="/products/import"
+            className="rounded-lg border border-hairline px-3 py-2 text-sm font-medium hover:bg-canvas"
+          >
+            Import CSV
+          </Link>
+        </div>
       </div>
     </AppLayout>
   );

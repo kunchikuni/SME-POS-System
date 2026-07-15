@@ -42,9 +42,29 @@ Tenancy spine and the onboarding→dashboard vertical slice:
 - Dashboard shell with trial banner; near-empty dashboard is the Phase 1 exit state.
 - Feature tests for the onboarding slice.
 
-Stubbed with clear markers for later phases: catalog/inventory (Phase 2),
-the POS PWA + sync (Phase 3), Fortify wiring is expected from the standard
-install (login page, sessions/password-reset tables).
+Fortify wiring is expected from the standard install (login page,
+sessions/password-reset tables).
+
+## Phase 2 — what's here (`feat/catalog`)
+
+Catalogue and the inventory ledger — the phase that proves stock-as-ledger:
+
+- **Ledger:** `stock_movements` (append-only) + `stock_levels` (cache). `StockService`
+  is the single writer; every movement and its cache update happen in one
+  transaction, and the cache is always rebuildable from the ledger via `rebuild()`.
+- **Products & categories:** CRUD, per-tenant unique SKU, money as integer cents.
+- **Opening stock** is an `initial` ledger entry, never a field on the product.
+- **CSV import** runs on Horizon via `ImportProductsCsv`, which re-binds tenant
+  context inside the job (the `InteractsWithTenant` trait — the same pattern the
+  Phase 3 sync jobs will use).
+- **Tests** prove the ledger sums correctly, that two offline sales never conflict,
+  that the cache equals a full rebuild, and that reads are tenant-scoped.
+
+Run the ledger proofs specifically:
+
+```bash
+php artisan test --filter=StockLedger
+```
 
 ## Faster workflow: `bin/wivae`
 

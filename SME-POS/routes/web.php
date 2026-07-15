@@ -1,6 +1,9 @@
 <?php
 
 use App\Http\Controllers\Auth\RegisteredTenantController;
+use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\ImportProductsController;
+use App\Http\Controllers\ProductController;
 use App\Http\Middleware\ResolveTenant;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -35,7 +38,12 @@ Route::domain('{tenant}.' . $rootDomain)
             Route::get('/dashboard', fn () => Inertia::render('Dashboard/Index'))
                 ->name('dashboard');
 
-            // Phase 2+ (feat/catalog): products, categories, branches, staff…
-            // Route::resource('products', ProductController::class);
+            // Catalog & inventory (Phase 2 · feat/catalog)
+            Route::get('products/import', [ImportProductsController::class, 'create'])->name('products.import');
+            Route::post('products/import', [ImportProductsController::class, 'store']);
+            Route::resource('products', ProductController::class)
+                ->only(['index', 'create', 'store', 'destroy']);
+            Route::resource('categories', CategoryController::class)
+                ->only(['index', 'store', 'destroy']);
         });
     });
