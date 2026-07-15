@@ -1,1 +1,0 @@
-# SME-POS-System
