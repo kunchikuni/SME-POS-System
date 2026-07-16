@@ -1,7 +1,7 @@
 import { api, ApiError, OfflineError } from './apiClient';
 import { ack, markAttempt, pending, pendingCount } from './outbox';
 import { db, getCursor, setCursor } from '../db/database';
-import type { BootstrapResponse, Product, PullResponse } from '../types/contract';
+import type { BootstrapResponse, Product, PullResponse, Table } from '../types/contract';
 
 /**
  * Orchestrates the three sync operations against the local store:
@@ -150,23 +150,35 @@ export class SyncManager {
 
   private async applyBootstrap(snapshot: BootstrapResponse): Promise<void> {
     const products: Product[] = snapshot.products.map((p) => ({ ...p, is_active: true }));
-    await db.transaction('rw', db.categories, db.products, db.stock, db.staff, async () => {
-      await db.categories.clear();
-      await db.categories.bulkPut(snapshot.categories);
-      await db.products.clear();
-      await db.products.bulkPut(products);
-      await db.stock.clear();
-      await db.stock.bulkPut(snapshot.stock);
-      await db.staff.clear();
-      await db.staff.bulkPut(snapshot.staff);
-    });
+    const tables: Table[] = snapshot.tables.map((t) => ({ ...t, is_active: true }));
+    await db.transaction(
+      'rw',
+      db.categories,
+      db.products,
+      db.stock,
+      db.staff,
+      db.diningTables,
+      async () => {
+        await db.categories.clear();
+        await db.categories.bulkPut(snapshot.categories);
+        await db.products.clear();
+        await db.products.bulkPut(products);
+        await db.stock.clear();
+        await db.stock.bulkPut(snapshot.stock);
+        await db.staff.clear();
+        await db.staff.bulkPut(snapshot.staff);
+        await db.diningTables.clear();
+        await db.diningTables.bulkPut(tables);
+      },
+    );
   }
 
   private async applyPull(changes: PullResponse): Promise<void> {
-    await db.transaction('rw', db.categories, db.products, db.stock, async () => {
+    await db.transaction('rw', db.categories, db.products, db.stock, db.diningTables, async () => {
       if (changes.categories.length) await db.categories.bulkPut(changes.categories);
       if (changes.products.length) await db.products.bulkPut(changes.products);
       if (changes.stock.length) await db.stock.bulkPut(changes.stock);
+      if (changes.tables.length) await db.diningTables.bulkPut(changes.tables);
     });
   }
 

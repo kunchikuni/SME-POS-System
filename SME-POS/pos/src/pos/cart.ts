@@ -84,10 +84,17 @@ export function cartTotals(cart: Cart): CartTotals {
  */
 export function buildSaleMutation(
   cart: Cart,
-  options: { cashierId: string | null; currency: string; payments: PaymentInput[] },
+  options: {
+    cashierId: string | null;
+    currency: string;
+    payments: PaymentInput[];
+    tableId?: string | null;
+    gratuityCents?: number;
+  },
 ): SaleCreateMutation {
   const totals = cartTotals(cart);
   const occurredAt = new Date().toISOString();
+  const gratuity = options.gratuityCents ?? 0;
 
   const lines: SaleLinePayload[] = cart.lines.map((l) => ({
     id: uuid(),
@@ -104,9 +111,11 @@ export function buildSaleMutation(
     sale: {
       id: uuid(),
       cashier_id: options.cashierId,
+      table_id: options.tableId ?? null,
       subtotal_cents: totals.subtotal_cents,
       tax_cents: totals.tax_cents,
-      total_cents: totals.total_cents,
+      gratuity_cents: gratuity,
+      total_cents: totals.total_cents + gratuity,
       currency: options.currency,
       occurred_at: occurredAt,
       lines,

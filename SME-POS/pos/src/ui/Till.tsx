@@ -16,6 +16,7 @@ import type { Product, SalePayload, StockLevel } from '../types/contract';
 import { SyncBadge } from './Shared';
 import { Checkout } from './Checkout';
 import { Receipt } from './Receipt';
+import { PrinterSettings } from './PrinterSettings';
 
 type View = 'catalog' | 'checkout' | 'receipt';
 
@@ -35,6 +36,7 @@ export function Till({
   const [view, setView] = useState<View>('catalog');
   const [lastSale, setLastSale] = useState<SalePayload | null>(null);
   const [search, setSearch] = useState('');
+  const [showPrinter, setShowPrinter] = useState(false);
 
   const stock = useMemo(() => {
     const map = new Map<string, number>();
@@ -98,6 +100,12 @@ export function Till({
           <div className="flex items-center gap-4">
             <SyncBadge />
             <button
+              onClick={() => setShowPrinter(true)}
+              className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-200"
+            >
+              Printer
+            </button>
+            <button
               onClick={onEndShift}
               className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-200"
             >
@@ -105,6 +113,8 @@ export function Till({
             </button>
           </div>
         </header>
+
+        {showPrinter && <PrinterSettings onClose={() => setShowPrinter(false)} />}
 
         <input
           value={search}

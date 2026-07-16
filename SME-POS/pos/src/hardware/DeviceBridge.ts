@@ -1,4 +1,5 @@
 import type { SalePayload } from '../types/contract';
+import { printerService } from './printerService';
 
 /**
  * Every hardware capability sits behind this one interface, so the React POS
@@ -31,21 +32,23 @@ export interface DeviceBridge {
 }
 
 /**
- * Web/PWA implementation. Printing uses the browser print path (a thermal
- * printer on the OS handles the rest); barcode scanning is handled by
- * keyboard-wedge scanners typing into the cart search field, so this returns
- * null; there is no cash-drawer access from the browser.
+ * Web/PWA implementation. Printing is delegated to the printer service, which
+ * streams ESC/POS to a paired Bluetooth thermal printer when one is connected
+ * and otherwise falls back to the browser print dialog — so a receipt is always
+ * reachable. Barcode scanning is handled by keyboard-wedge scanners typing into
+ * the cart search field, so this returns null.
  */
 export class WebDeviceBridge implements DeviceBridge {
-  readonly capabilities: DeviceCapabilities = {
-    print: true,
-    scan: false,
-    cashDrawer: false,
-  };
+  get capabilities(): DeviceCapabilities {
+    return {
+      print: true,
+      scan: false,
+      cashDrawer: printerService.isConnected(),
+    };
+  }
 
-  async printReceipt(_context: ReceiptContext): Promise<void> {
-    // The receipt view is rendered in the DOM; hand off to the browser/OS.
-    window.print();
+  async printReceipt(context: ReceiptContext): Promise<void> {
+    await printerService.printReceipt(context);
   }
 
   async scanBarcode(): Promise<string | null> {
@@ -53,7 +56,7 @@ export class WebDeviceBridge implements DeviceBridge {
   }
 
   async openDrawer(): Promise<void> {
-    // No-op in the browser.
+    await printerService.kickDrawer();
   }
 }
 

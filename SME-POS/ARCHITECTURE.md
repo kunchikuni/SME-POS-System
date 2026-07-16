@@ -1,6 +1,6 @@
 # Wivae — System Architecture
 
-> Status: **Draft for review** · Owner: Engineering · Reviewed by: Cowork
+> Status: **Draft for review** · Owner: Engineering · Reviewed by: Kun Chikuni
 > This document is the north star. Code decisions defer to it; when they diverge, we update this doc in the same PR.
 
 ---

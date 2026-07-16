@@ -17,7 +17,7 @@ class Tenant extends Model
 
     protected $fillable = [
         'name', 'subdomain', 'plan', 'status', 'trial_ends_at',
-        'zimra_enabled', 'branding',
+        'zimra_enabled', 'branding', 'mode',
     ];
 
     protected function casts(): array
@@ -47,6 +47,12 @@ class Tenant extends Model
     public function onTrial(): bool
     {
         return $this->trial_ends_at !== null && $this->trial_ends_at->isFuture();
+    }
+
+    /** Restaurant tenants get tables, the kitchen queue, and gratuity (§Phase 5). */
+    public function isRestaurant(): bool
+    {
+        return $this->mode === 'restaurant';
     }
 
     /** Theme with the tenant's white-label overrides applied over defaults. */

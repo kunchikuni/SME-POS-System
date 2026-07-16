@@ -58,6 +58,12 @@ export function Receipt({
               <span className="tabular-nums">{formatMoney(sale.tax_cents, sale.currency)}</span>
             </div>
           )}
+          {sale.gratuity_cents > 0 && (
+            <div className="flex justify-between text-sm text-slate-500">
+              <span>Gratuity</span>
+              <span className="tabular-nums">{formatMoney(sale.gratuity_cents, sale.currency)}</span>
+            </div>
+          )}
           <div className="mt-1 flex justify-between text-base font-semibold text-slate-900">
             <span>Total</span>
             <span className="tabular-nums">{formatMoney(sale.total_cents, sale.currency)}</span>

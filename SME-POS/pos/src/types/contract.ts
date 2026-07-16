@@ -72,8 +72,12 @@ export interface PaymentPayload {
 export interface SalePayload {
   id: string;
   cashier_id: string | null;
+  /** Restaurant only: the table this order belongs to. */
+  table_id: string | null;
   subtotal_cents: number;
   tax_cents: number;
+  /** Restaurant only: tip added at settle. Part of total_cents. */
+  gratuity_cents: number;
   total_cents: number;
   currency: string;
   /** ISO-8601; the real time the sale happened on the device, possibly offline. */
@@ -101,6 +105,7 @@ export interface BootstrapResponse {
   products: Omit<Product, 'is_active'>[];
   stock: StockLevel[];
   staff: StaffMember[];
+  tables: Omit<Table, 'is_active'>[];
 }
 
 export interface PullResponse {
@@ -108,6 +113,7 @@ export interface PullResponse {
   categories: Category[];
   products: Product[];
   stock: StockLevel[];
+  tables: Table[];
 }
 
 export interface PushResponse {
@@ -116,10 +122,21 @@ export interface PushResponse {
   cursor: string;
 }
 
+export type TenantMode = 'retail' | 'restaurant';
+
 export interface SessionResponse {
   device: { id: string; name: string };
   branch: { id: string; name: string };
-  tenant: { name: string; theme: TenantTheme };
+  tenant: { name: string; theme: TenantTheme; mode: TenantMode };
+}
+
+/** A restaurant floor-plan table. Only populated for restaurant tenants. */
+export interface Table {
+  id: string;
+  name: string;
+  section: string | null;
+  seats: number;
+  is_active: boolean;
 }
 
 export interface TenantTheme {

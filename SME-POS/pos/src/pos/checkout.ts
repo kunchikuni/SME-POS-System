@@ -18,12 +18,20 @@ import type { SalePayload } from '../types/contract';
  */
 export async function completeSale(
   cart: Cart,
-  options: { cashierId: string | null; currency?: string; payments: PaymentInput[] },
+  options: {
+    cashierId: string | null;
+    currency?: string;
+    payments: PaymentInput[];
+    tableId?: string | null;
+    gratuityCents?: number;
+  },
 ): Promise<SalePayload> {
   const mutation = buildSaleMutation(cart, {
     cashierId: options.cashierId,
     currency: options.currency ?? 'USD',
     payments: options.payments,
+    tableId: options.tableId ?? null,
+    gratuityCents: options.gratuityCents ?? 0,
   });
   const sale = mutation.sale;
 

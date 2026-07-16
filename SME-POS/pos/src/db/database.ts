@@ -1,4 +1,4 @@
-import Dexie, { type Table } from 'dexie';
+import Dexie, { type Table as DexieTable } from 'dexie';
 import type {
   Category,
   Mutation,
@@ -7,6 +7,7 @@ import type {
   SalePayload,
   StaffMember,
   StockLevel,
+  Table,
 } from '../types/contract';
 
 /**
@@ -44,20 +45,21 @@ export interface MetaRow {
 }
 
 export class PosDatabase extends Dexie {
-  categories!: Table<Category, string>;
-  products!: Table<Product, string>;
-  stock!: Table<StockLevel, string>;
-  staff!: Table<StaffMember, string>;
-  sales!: Table<LocalSale, string>;
-  outbox!: Table<OutboxEntry, string>;
-  meta!: Table<MetaRow, string>;
+  categories!: DexieTable<Category, string>;
+  products!: DexieTable<Product, string>;
+  stock!: DexieTable<StockLevel, string>;
+  staff!: DexieTable<StaffMember, string>;
+  diningTables!: DexieTable<Table, string>;
+  sales!: DexieTable<LocalSale, string>;
+  outbox!: DexieTable<OutboxEntry, string>;
+  meta!: DexieTable<MetaRow, string>;
 
   constructor() {
     super('wivae-pos');
 
     // Only indexed fields are listed; Dexie stores the whole object regardless.
     // NB: is_active is intentionally NOT indexed — IndexedDB can't key on a
-    // boolean, so we filter active products in JS (the catalog is SME-sized).
+    // boolean, so we filter active rows in JS (catalogue/floor plan are small).
     this.version(1).stores({
       categories: 'id, name',
       products: 'id, sku, barcode, category_id',
@@ -66,6 +68,11 @@ export class PosDatabase extends Dexie {
       sales: 'id, sync, occurred_at',
       outbox: 'mutationId, createdAt',
       meta: 'key',
+    });
+
+    // v2 adds the restaurant floor plan (empty for retail tenants).
+    this.version(2).stores({
+      diningTables: 'id, section',
     });
   }
 }
