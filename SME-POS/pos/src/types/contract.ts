@@ -1,0 +1,127 @@
+/**
+ * The wire contract with App\Domain\Pos\SyncService. These types mirror the
+ * server's JSON exactly — field names, nullability, and units — so a mismatch
+ * is a compile error here, not a lost sale in the field.
+ *
+ * Money is always integer minor units (`*_cents`). Ids are client-generated
+ * UUIDs on everything the till writes, which is what makes push idempotent and
+ * offline records first-class (docs/ARCHITECTURE.md §6).
+ */
+
+export type ProductType = 'retail' | 'restaurant';
+
+/** A tender label, recorded for the merchant's reporting. Wivae never processes it. */
+export type PaymentMethod = 'cash' | 'ecocash' | 'card' | 'bank' | 'other';
+
+// ── Catalog (server-authoritative, flows dashboard → till via pull) ──────────
+
+export interface Category {
+  id: string;
+  name: string;
+}
+
+export interface Product {
+  id: string;
+  category_id: string | null;
+  sku: string | null;
+  barcode: string | null;
+  name: string;
+  price_cents: number;
+  currency: string;
+  tax_class: string;
+  type: ProductType;
+  track_stock: boolean;
+  /** Present on pull; bootstrap only ships active products, so we default it true on ingest. */
+  is_active: boolean;
+}
+
+/** Cached current stock for this device's branch: SUM(delta) from the ledger. */
+export interface StockLevel {
+  product_id: string;
+  quantity: number;
+}
+
+/** Staff with a PIN, for offline shift login. PIN is attribution, not a security gate. */
+export interface StaffMember {
+  id: string;
+  name: string;
+  role: string;
+  pin_hash: string;
+}
+
+// ── Sale snapshot (till → server; immutable once completed) ──────────────────
+
+export interface SaleLinePayload {
+  id: string;
+  product_id: string | null;
+  name: string;
+  qty: number;
+  unit_price_cents: number;
+  line_total_cents: number;
+  /** Client-minted stock ledger id, so the decrement is idempotent on replay. */
+  movement_id?: string;
+}
+
+export interface PaymentPayload {
+  id: string;
+  method: PaymentMethod;
+  amount_cents: number;
+  currency: string;
+}
+
+export interface SalePayload {
+  id: string;
+  cashier_id: string | null;
+  subtotal_cents: number;
+  tax_cents: number;
+  total_cents: number;
+  currency: string;
+  /** ISO-8601; the real time the sale happened on the device, possibly offline. */
+  occurred_at: string;
+  lines: SaleLinePayload[];
+  payments: PaymentPayload[];
+}
+
+// ── Mutations (the push envelope) ────────────────────────────────────────────
+
+export type MutationType = 'sale.create';
+
+export interface SaleCreateMutation {
+  type: 'sale.create';
+  sale: SalePayload;
+}
+
+export type Mutation = SaleCreateMutation;
+
+// ── Endpoint payloads ────────────────────────────────────────────────────────
+
+export interface BootstrapResponse {
+  cursor: string;
+  categories: Category[];
+  products: Omit<Product, 'is_active'>[];
+  stock: StockLevel[];
+  staff: StaffMember[];
+}
+
+export interface PullResponse {
+  cursor: string;
+  categories: Category[];
+  products: Product[];
+  stock: StockLevel[];
+}
+
+export interface PushResponse {
+  /** Ids the server has now durably applied — includes replays. */
+  acked: string[];
+  cursor: string;
+}
+
+export interface SessionResponse {
+  device: { id: string; name: string };
+  branch: { id: string; name: string };
+  tenant: { name: string; theme: TenantTheme };
+}
+
+export interface TenantTheme {
+  [key: string]: unknown;
+}

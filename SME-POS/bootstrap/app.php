@@ -17,8 +17,10 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         // Already-authenticated users hitting /login go to their dashboard.
-        // Relative path keeps them on their current tenant subdomain.
+        // Relative paths keep them on their current tenant subdomain and avoid
+        // rebuilding the {tenant} domain segment (which needs the tenant param).
         $middleware->redirectUsersTo('/dashboard');
+        $middleware->redirectGuestsTo('/login');
 
         // ResolveTenant is applied per-route-group in routes/web.php, not
         // globally, so central onboarding routes run without a tenant.

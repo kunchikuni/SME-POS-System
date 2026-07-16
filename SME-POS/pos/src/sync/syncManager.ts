@@ -1,0 +1,190 @@
+import { api, ApiError, OfflineError } from './apiClient';
+import { ack, markAttempt, pending, pendingCount } from './outbox';
+import { db, getCursor, setCursor } from '../db/database';
+import type { BootstrapResponse, Product, PullResponse } from '../types/contract';
+
+/**
+ * Orchestrates the three sync operations against the local store:
+ *
+ *   bootstrap — one full snapshot when a device is first provisioned
+ *   pull      — server-authoritative catalog/stock changes since our cursor
+ *   flush     — drain the outbox to the server, idempotently
+ *
+ * There is deliberately no conflict resolution: sales are insert-only and stock
+ * is a summing ledger, so offline writes never contend (docs/ARCHITECTURE.md §6).
+ * Catalog flows one way (server → till), so last-write-wins on pull is correct.
+ */
+
+export interface SyncStatus {
+  online: boolean;
+  syncing: boolean;
+  pending: number;
+  lastSyncedAt: string | null;
+  needsReauth: boolean;
+}
+
+type Listener = (status: SyncStatus) => void;
+
+export class SyncManager {
+  private status: SyncStatus = {
+    online: navigator.onLine,
+    syncing: false,
+    pending: 0,
+    lastSyncedAt: null,
+    needsReauth: false,
+  };
+
+  private listeners = new Set<Listener>();
+  private pollHandle: number | null = null;
+
+  // ── Observation ────────────────────────────────────────────────────────────
+
+  subscribe(listener: Listener): () => void {
+    this.listeners.add(listener);
+    listener(this.status);
+    return () => this.listeners.delete(listener);
+  }
+
+  private emit(patch: Partial<SyncStatus>): void {
+    this.status = { ...this.status, ...patch };
+    for (const listener of this.listeners) listener(this.status);
+  }
+
+  private async refreshPending(): Promise<void> {
+    this.emit({ pending: await pendingCount() });
+  }
+
+  // ── Lifecycle ────────────────────────────────────────────────────────────
+
+  /** Wire up connectivity events and a gentle background poll. */
+  start(pollMs = 30_000): void {
+    window.addEventListener('online', this.handleOnline);
+    window.addEventListener('offline', this.handleOffline);
+    void this.refreshPending();
+    if (this.pollHandle === null) {
+      this.pollHandle = window.setInterval(() => void this.sync(), pollMs);
+    }
+    if (navigator.onLine) void this.sync();
+  }
+
+  stop(): void {
+    window.removeEventListener('online', this.handleOnline);
+    window.removeEventListener('offline', this.handleOffline);
+    if (this.pollHandle !== null) {
+      window.clearInterval(this.pollHandle);
+      this.pollHandle = null;
+    }
+  }
+
+  private handleOnline = (): void => {
+    this.emit({ online: true });
+    void this.sync();
+  };
+
+  private handleOffline = (): void => {
+    this.emit({ online: false });
+  };
+
+  // ── Operations ─────────────────────────────────────────────────────────────
+
+  /** Full snapshot for a freshly provisioned device. Replaces local catalog. */
+  async bootstrap(): Promise<void> {
+    const snapshot = await api.bootstrap();
+    await this.applyBootstrap(snapshot);
+    await setCursor(snapshot.cursor);
+    this.emit({ lastSyncedAt: new Date().toISOString() });
+  }
+
+  /**
+   * Push then pull. Push first so the server has our sales before we ask what
+   * changed; both steps tolerate being offline and simply defer.
+   */
+  async sync(): Promise<void> {
+    if (this.status.syncing) return;
+    this.emit({ syncing: true });
+    try {
+      await this.flush();
+      await this.pull();
+      this.emit({ lastSyncedAt: new Date().toISOString(), online: true });
+    } catch (error) {
+      this.handleError(error);
+    } finally {
+      this.emit({ syncing: false });
+      await this.refreshPending();
+    }
+  }
+
+  /** Drain the outbox. Acked ids are removed and their local sale marked synced. */
+  async flush(): Promise<void> {
+    const entries = await pending();
+    if (entries.length === 0) return;
+
+    const mutations = entries.map((e) => e.payload);
+
+    let result;
+    try {
+      result = await api.push(mutations);
+    } catch (error) {
+      if (error instanceof OfflineError) return; // retry later, nothing wrong
+      for (const entry of entries) {
+        await markAttempt(entry.mutationId, describe(error));
+      }
+      throw error;
+    }
+
+    await ack(result.acked);
+    await db.sales.where('id').anyOf(result.acked).modify({ sync: 'synced' });
+  }
+
+  /** Apply server-authoritative changes since our cursor. */
+  async pull(): Promise<void> {
+    const since = await getCursor();
+    if (since === null) return; // not bootstrapped yet
+
+    const changes = await api.pull(since);
+    await this.applyPull(changes);
+    await setCursor(changes.cursor);
+  }
+
+  // ── Local application ────────────────────────────────────────────────────
+
+  private async applyBootstrap(snapshot: BootstrapResponse): Promise<void> {
+    const products: Product[] = snapshot.products.map((p) => ({ ...p, is_active: true }));
+    await db.transaction('rw', db.categories, db.products, db.stock, db.staff, async () => {
+      await db.categories.clear();
+      await db.categories.bulkPut(snapshot.categories);
+      await db.products.clear();
+      await db.products.bulkPut(products);
+      await db.stock.clear();
+      await db.stock.bulkPut(snapshot.stock);
+      await db.staff.clear();
+      await db.staff.bulkPut(snapshot.staff);
+    });
+  }
+
+  private async applyPull(changes: PullResponse): Promise<void> {
+    await db.transaction('rw', db.categories, db.products, db.stock, async () => {
+      if (changes.categories.length) await db.categories.bulkPut(changes.categories);
+      if (changes.products.length) await db.products.bulkPut(changes.products);
+      if (changes.stock.length) await db.stock.bulkPut(changes.stock);
+    });
+  }
+
+  private handleError(error: unknown): void {
+    if (error instanceof OfflineError) {
+      this.emit({ online: false });
+      return;
+    }
+    if (error instanceof ApiError && error.status === 401) {
+      this.emit({ needsReauth: true });
+    }
+  }
+}
+
+function describe(error: unknown): string {
+  if (error instanceof ApiError) return `api_${error.status}`;
+  if (error instanceof Error) return error.name;
+  return 'unknown';
+}
+
+export const syncManager = new SyncManager();

@@ -3,8 +3,13 @@
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\RegisteredTenantController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\ImportProductsController;
+use App\Http\Controllers\Pos\PosController;
+use App\Http\Controllers\Pos\SyncController;
+use App\Http\Controllers\PosShellController;
 use App\Http\Controllers\ProductController;
+use App\Http\Middleware\ResolveDevice;
 use App\Http\Middleware\ResolveTenant;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -35,6 +40,10 @@ Route::domain('{tenant}.' . $rootDomain)
     ->middleware(ResolveTenant::class)
     ->group(function () {
 
+        // Tenant root: the natural URL to type. Guests bounce to /login via
+        // the auth middleware; signed-in staff land on their dashboard.
+        Route::get('/', fn () => redirect('/dashboard'));
+
         // Guests: the tenant login screen (ResolveTenant has set context, so
         // authentication is scoped to this subdomain's tenant).
         Route::middleware('guest')->group(function () {
@@ -55,5 +64,39 @@ Route::domain('{tenant}.' . $rootDomain)
                 ->only(['index', 'create', 'store', 'destroy']);
             Route::resource('categories', CategoryController::class)
                 ->only(['index', 'store', 'destroy']);
+
+            // Till provisioning (Phase 3): create a device, reveal its token once.
+            Route::resource('devices', DeviceController::class)
+                ->only(['index', 'store', 'destroy']);
         });
     });
+
+/*
+|--------------------------------------------------------------------------
+| POS API — device bearer auth, stateless JSON (Phase 3 · feat/pos-offline)
+|--------------------------------------------------------------------------
+| Authenticated by device token via ResolveDevice, NOT by subdomain/session.
+| CSRF-exempt (see bootstrap/app.php). This is what the offline till syncs to.
+*/
+Route::domain('{tenant}.' . $rootDomain)
+    ->middleware(ResolveDevice::class)
+    ->group(function () {
+        Route::get('pos/session', [PosController::class, 'session']);
+        Route::get('sync/bootstrap', [SyncController::class, 'bootstrap']);
+        Route::post('sync/push', [SyncController::class, 'push']);
+        Route::get('sync/pull', [SyncController::class, 'pull']);
+    });
+
+/*
+|--------------------------------------------------------------------------
+| POS PWA shell (Phase 3 · feat/pos-offline)
+|--------------------------------------------------------------------------
+| Serves the built offline-first till at {tenant}.wivae.test/pos. Registered
+| AFTER the POS API group so pos/session and sync/* match their handlers first;
+| this catch-all only picks up /pos and /pos/* navigations. Hashed assets under
+| /pos/assets/* are served as static files before routing ever runs.
+*/
+Route::domain('{tenant}.' . $rootDomain)
+    ->get('/pos/{any?}', PosShellController::class)
+    ->where('any', '.*')
+    ->name('pos.shell');

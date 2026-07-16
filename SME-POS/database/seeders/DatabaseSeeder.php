@@ -10,7 +10,9 @@ use App\Models\Branch;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 /**
  * Dev seeder. Creates one demo merchant you can actually log into, then fills
@@ -28,6 +30,10 @@ class DatabaseSeeder extends Seeder
     private const SUBDOMAIN = 'demo';
     private const OWNER_EMAIL = 'owner@demo.test';
     private const OWNER_PASSWORD = 'password';
+    private const DEVICE_TOKEN = 'demo-device-token';
+    private const CASHIER_EMAIL = 'cashier@demo.test';
+    private const CASHIER_PASSWORD = 'password';
+    private const CASHIER_PIN = '1234';
 
     public function run(RegisterTenant $register, StockService $stock): void
     {
@@ -50,7 +56,37 @@ class DatabaseSeeder extends Seeder
         $branchId = Branch::where('is_default', true)->value('id');
 
         $this->seedCatalogue($stock, $branchId);
+        $this->seedDevice($branchId);
+        $this->seedStaff($branchId);
         $this->report();
+    }
+
+    /**
+     * A cashier with a till PIN, so the POS shift-login works out of the box.
+     * The PIN is hashed like any credential; it ships to devices in bootstrap
+     * for offline attribution only (docs/ARCHITECTURE.md §7).
+     */
+    private function seedStaff(string $branchId): void
+    {
+        User::create([
+            'branch_id' => $branchId,
+            'name'      => 'Tariro (Cashier)',
+            'email'     => self::CASHIER_EMAIL,
+            'password'  => self::CASHIER_PASSWORD, // 'hashed' cast hashes on set
+            'role'      => 'cashier',
+            'pin_hash'  => Hash::make(self::CASHIER_PIN),
+        ]);
+    }
+
+    private function seedDevice(string $branchId): void
+    {
+        $device = new \App\Models\Device([
+            'branch_id' => $branchId,
+            'name'      => 'Front Counter',
+        ]);
+        // Fixed token in dev so the PWA can authenticate without provisioning.
+        $device->token_hash = \App\Models\Device::hashToken(self::DEVICE_TOKEN);
+        $device->save();
     }
 
     private function seedCatalogue(StockService $stock, string $branchId): void
@@ -96,6 +132,9 @@ class DatabaseSeeder extends Seeder
         $this->command->line("  URL:      http://{$host}/login");
         $this->command->line('  Email:    ' . self::OWNER_EMAIL);
         $this->command->line('  Password: ' . self::OWNER_PASSWORD);
+        $this->command->line("  Device token (POS): " . self::DEVICE_TOKEN);
+        $this->command->line("  Cashier PIN (till): " . self::CASHIER_PIN);
+        $this->command->line("  Till URL: http://{$host}/pos");
         $this->command->line("  (add '127.0.0.1 {$host}' to your hosts file if you haven't)");
         $this->command->newLine();
     }
