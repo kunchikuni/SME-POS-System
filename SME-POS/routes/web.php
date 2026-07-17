@@ -5,6 +5,7 @@ use App\Http\Controllers\Auth\RegisteredTenantController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\ImportProductsController;
+use App\Http\Controllers\KitchenController;
 use App\Http\Controllers\Pos\PosController;
 use App\Http\Controllers\Pos\SyncController;
 use App\Http\Controllers\PosShellController;
@@ -68,6 +69,12 @@ Route::domain('{tenant}.' . $rootDomain)
             // Till provisioning (Phase 3): create a device, reveal its token once.
             Route::resource('devices', DeviceController::class)
                 ->only(['index', 'store', 'destroy']);
+
+            // Kitchen display (Phase 5 · feat/restaurant). Restaurant-only; the
+            // controller 404s for retail tenants.
+            Route::get('kitchen', [KitchenController::class, 'index'])->name('kitchen');
+            Route::patch('kitchen/{kitchenOrder}', [KitchenController::class, 'update'])
+                ->name('kitchen.update');
         });
     });
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatMoney, toCents } from '../lib/money';
+import { formatMoney, taxOf, toCents } from '../lib/money';
 import { cartTotals, type Cart } from '../pos/cart';
 import { completeSale } from '../pos/checkout';
 import type { PaymentMethod, SalePayload } from '../types/contract';
@@ -11,31 +11,52 @@ const METHODS: { value: PaymentMethod; label: string }[] = [
   { value: 'bank', label: 'Bank' },
 ];
 
+// Tip presets in basis points; -1 is the "custom amount" sentinel.
+const TIPS: { label: string; bps: number }[] = [
+  { label: 'None', bps: 0 },
+  { label: '10%', bps: 1000 },
+  { label: '12.5%', bps: 1250 },
+  { label: '15%', bps: 1500 },
+];
+
 /**
- * Records how the customer paid — a label for the merchant's reporting. Wivae
- * never processes the money (docs/ARCHITECTURE.md §1, §9.1). For cash we offer
- * an optional "received" field to show change; the recorded payment is always
- * the sale total.
+ * Settle a sale: choose a tender label (Wivae never processes the money,
+ * §1/§9.1) and, in restaurant mode, add a gratuity. The recorded payment is the
+ * grand total = subtotal + tax + gratuity.
  */
 export function Checkout({
   cart,
   cashierId,
   onComplete,
   onCancel,
+  tableId = null,
+  showGratuity = false,
 }: {
   cart: Cart;
   cashierId: string | null;
   onComplete: (sale: SalePayload) => void;
   onCancel: () => void;
+  tableId?: string | null;
+  showGratuity?: boolean;
 }) {
   const totals = cartTotals(cart);
   const [method, setMethod] = useState<PaymentMethod>('cash');
+  const [tipBps, setTipBps] = useState(0);
+  const [customTip, setCustomTip] = useState('');
   const [received, setReceived] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const gratuity = !showGratuity
+    ? 0
+    : tipBps === -1
+      ? toCents(customTip)
+      : taxOf(totals.subtotal_cents, tipBps);
+
+  const grandTotal = totals.total_cents + gratuity;
+
   const receivedCents = toCents(received);
-  const change = method === 'cash' && receivedCents > 0 ? receivedCents - totals.total_cents : null;
+  const change = method === 'cash' && receivedCents > 0 ? receivedCents - grandTotal : null;
 
   async function confirm() {
     setBusy(true);
@@ -43,7 +64,9 @@ export function Checkout({
     try {
       const sale = await completeSale(cart, {
         cashierId,
-        payments: [{ method, amount_cents: totals.total_cents }],
+        payments: [{ method, amount_cents: grandTotal }],
+        tableId,
+        gratuityCents: gratuity,
       });
       onComplete(sale);
     } catch {
@@ -56,17 +79,62 @@ export function Checkout({
     <div className="grid min-h-dvh place-items-center bg-slate-50 p-6">
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-sm">
         <button onClick={onCancel} className="mb-4 text-sm text-slate-500 hover:text-slate-700">
-          ← Back to sale
+          ← Back to order
         </button>
 
         <div className="text-center">
           <p className="text-sm text-slate-500">Total due</p>
           <p className="text-4xl font-semibold tabular-nums text-slate-900">
-            {formatMoney(totals.total_cents)}
+            {formatMoney(grandTotal)}
           </p>
+          {gratuity > 0 && (
+            <p className="mt-1 text-xs text-slate-400">
+              {formatMoney(totals.total_cents)} + {formatMoney(gratuity)} tip
+            </p>
+          )}
         </div>
 
-        <p className="mt-6 mb-2 text-sm font-medium text-slate-700">Payment method</p>
+        {showGratuity && (
+          <div className="mt-6">
+            <p className="mb-2 text-sm font-medium text-slate-700">Gratuity</p>
+            <div className="grid grid-cols-5 gap-2">
+              {TIPS.map((t) => (
+                <button
+                  key={t.bps}
+                  onClick={() => setTipBps(t.bps)}
+                  className={`rounded-lg border py-2 text-sm font-medium ${
+                    tipBps === t.bps
+                      ? 'border-blue-600 bg-blue-50 text-blue-700'
+                      : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+              <button
+                onClick={() => setTipBps(-1)}
+                className={`rounded-lg border py-2 text-sm font-medium ${
+                  tipBps === -1
+                    ? 'border-blue-600 bg-blue-50 text-blue-700'
+                    : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                Custom
+              </button>
+            </div>
+            {tipBps === -1 && (
+              <input
+                inputMode="decimal"
+                value={customTip}
+                onChange={(e) => setCustomTip(e.target.value)}
+                placeholder="Tip amount"
+                className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 tabular-nums outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            )}
+          </div>
+        )}
+
+        <p className="mb-2 mt-6 text-sm font-medium text-slate-700">Payment method</p>
         <div className="grid grid-cols-2 gap-2">
           {METHODS.map((m) => (
             <button

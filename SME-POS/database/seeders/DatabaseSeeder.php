@@ -9,6 +9,7 @@ use App\Domain\Tenancy\TenantContext;
 use App\Models\Branch;
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\Table;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -58,7 +59,30 @@ class DatabaseSeeder extends Seeder
         $this->seedCatalogue($stock, $branchId);
         $this->seedDevice($branchId);
         $this->seedStaff($branchId);
+        $this->seedTables($branchId);
         $this->report();
+    }
+
+    /**
+     * A small floor plan. Only used when the tenant is in restaurant mode, but
+     * harmless to seed for retail — the till simply never shows it.
+     */
+    private function seedTables(string $branchId): void
+    {
+        $tables = [
+            ['T1', 'Main', 2], ['T2', 'Main', 4], ['T3', 'Main', 4], ['T4', 'Main', 6],
+            ['P1', 'Patio', 2], ['P2', 'Patio', 2], ['P3', 'Patio', 4],
+        ];
+
+        foreach ($tables as $i => [$name, $section, $seats]) {
+            Table::create([
+                'branch_id' => $branchId,
+                'name'      => $name,
+                'section'   => $section,
+                'seats'     => $seats,
+                'sort'      => $i,
+            ]);
+        }
     }
 
     /**
@@ -136,6 +160,10 @@ class DatabaseSeeder extends Seeder
         $this->command->line("  Cashier PIN (till): " . self::CASHIER_PIN);
         $this->command->line("  Till URL: http://{$host}/pos");
         $this->command->line("  (add '127.0.0.1 {$host}' to your hosts file if you haven't)");
+        $this->command->newLine();
+        $this->command->line("  Restaurant mode (tables + kitchen at /kitchen): set the demo");
+        $this->command->line("  tenant's mode to 'restaurant', e.g. via tinker:");
+        $this->command->line("    Tenant::where('subdomain','demo')->update(['mode'=>'restaurant']);");
         $this->command->newLine();
     }
 }

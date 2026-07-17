@@ -10,15 +10,17 @@ import {
   setQty,
   type Cart,
 } from '../pos/cart';
+import { isRestaurant } from '../pos/mode';
 import type { DeviceSession } from '../sync/session';
 import type { Shift } from '../pos/shift';
-import type { Product, SalePayload, StockLevel } from '../types/contract';
+import type { Product, SalePayload, StockLevel, Table } from '../types/contract';
 import { SyncBadge } from './Shared';
 import { Checkout } from './Checkout';
 import { Receipt } from './Receipt';
 import { PrinterSettings } from './PrinterSettings';
+import { FloorPlan } from './FloorPlan';
 
-type View = 'catalog' | 'checkout' | 'receipt';
+type View = 'floor' | 'catalog' | 'checkout' | 'receipt';
 
 export function Till({
   device,
@@ -29,11 +31,14 @@ export function Till({
   shift: Shift;
   onEndShift: () => void;
 }) {
+  const restaurant = isRestaurant();
   const products = useLiveQuery(() => db.products.toArray(), [], [] as Product[]);
   const stockRows = useLiveQuery(() => db.stock.toArray(), [], [] as StockLevel[]);
+  const tables = useLiveQuery(() => db.diningTables.toArray(), [], [] as Table[]);
 
   const [cart, setCart] = useState<Cart>(emptyCart);
-  const [view, setView] = useState<View>('catalog');
+  const [view, setView] = useState<View>(restaurant ? 'floor' : 'catalog');
+  const [table, setTable] = useState<Table | null>(null);
   const [lastSale, setLastSale] = useState<SalePayload | null>(null);
   const [search, setSearch] = useState('');
   const [showPrinter, setShowPrinter] = useState(false);
@@ -60,11 +65,36 @@ export function Till({
 
   const totals = cartTotals(cart);
 
+  function newOrder() {
+    setCart(emptyCart());
+    setTable(null);
+    setView(restaurant ? 'floor' : 'catalog');
+  }
+
+  if (view === 'floor') {
+    return (
+      <FloorPlan
+        tenantName={device.tenant.name}
+        branchName={device.branch.name}
+        cashierName={shift.cashierName}
+        tables={tables}
+        onSelect={(t) => {
+          setTable(t);
+          setCart(emptyCart());
+          setView('catalog');
+        }}
+        onEndShift={onEndShift}
+      />
+    );
+  }
+
   if (view === 'checkout') {
     return (
       <Checkout
         cart={cart}
         cashierId={shift.cashierId}
+        tableId={table?.id ?? null}
+        showGratuity={restaurant}
         onCancel={() => setView('catalog')}
         onComplete={(sale) => {
           setLastSale(sale);
@@ -81,21 +111,31 @@ export function Till({
         sale={lastSale}
         tenantName={device.tenant.name}
         branchName={device.branch.name}
-        onDone={() => setView('catalog')}
+        onDone={newOrder}
       />
     );
   }
 
   return (
     <div className="flex min-h-dvh flex-col bg-slate-50 lg:flex-row">
-      {/* Catalog */}
+      {/* Catalog / order */}
       <section className="flex-1 p-4">
         <header className="mb-4 flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-lg font-semibold text-slate-900">{device.tenant.name}</h1>
-            <p className="text-sm text-slate-500">
-              {device.branch.name} · {shift.cashierName}
-            </p>
+          <div className="flex items-center gap-3">
+            <div>
+              <h1 className="text-lg font-semibold text-slate-900">{device.tenant.name}</h1>
+              <p className="text-sm text-slate-500">
+                {device.branch.name} · {shift.cashierName}
+              </p>
+            </div>
+            {restaurant && table && (
+              <button
+                onClick={() => setView('floor')}
+                className="rounded-lg bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+              >
+                Table {table.name} · change
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-4">
             <SyncBadge />
@@ -157,10 +197,12 @@ export function Till({
       {/* Cart */}
       <aside className="flex w-full flex-col border-t border-slate-200 bg-white lg:w-96 lg:border-l lg:border-t-0">
         <div className="flex-1 overflow-y-auto p-4">
-          <h2 className="mb-3 font-semibold text-slate-900">Current sale</h2>
+          <h2 className="mb-3 font-semibold text-slate-900">
+            {restaurant && table ? `Table ${table.name}` : 'Current sale'}
+          </h2>
           {cart.lines.length === 0 ? (
             <p className="mt-8 text-center text-sm text-slate-400">
-              Tap a product to add it to the sale.
+              Tap a product to add it to the {restaurant ? 'order' : 'sale'}.
             </p>
           ) : (
             <ul className="space-y-3">
@@ -209,7 +251,7 @@ export function Till({
             disabled={cart.lines.length === 0}
             className="mt-4 w-full rounded-lg bg-blue-600 py-3 font-medium text-white hover:bg-blue-700 disabled:opacity-40"
           >
-            Charge {formatMoney(totals.total_cents)}
+            {restaurant ? 'Send & settle' : 'Charge'} {formatMoney(totals.total_cents)}
           </button>
         </div>
       </aside>
