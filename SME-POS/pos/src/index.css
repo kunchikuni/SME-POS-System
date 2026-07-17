@@ -1,1 +1,6 @@
 @import "tailwindcss";
+
+/* Default brand colour; overridden per tenant at boot from the session theme. */
+:root {
+  --brand: #1d4ed8;
+}

@@ -3,6 +3,7 @@ import { getSession, type DeviceSession } from './sync/session';
 import { endShift, getShift, type Shift } from './pos/shift';
 import { getCursor } from './db/database';
 import { syncManager } from './sync/syncManager';
+import { applyBrandTheme } from './pos/theme';
 import { PairDevice } from './ui/PairDevice';
 import { ShiftLogin } from './ui/ShiftLogin';
 import { Till } from './ui/Till';
@@ -27,6 +28,8 @@ export function App() {
 
   useEffect(() => {
     if (!device) return;
+
+    applyBrandTheme(device.tenant.theme);
 
     let active = true;
     void (async () => {

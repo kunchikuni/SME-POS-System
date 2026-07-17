@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\RegisteredTenantController;
 use App\Http\Controllers\AnalyticsController;
+use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\ImportProductsController;
@@ -62,6 +63,11 @@ Route::domain('{tenant}.' . $rootDomain)
             // Analytics (Phase 6 · feat/analytics): sales, top products, dead
             // stock, branch performance — read models over the sales ledger.
             Route::get('analytics', [AnalyticsController::class, 'index'])->name('analytics');
+
+            // White-label branding (Phase 8 · feat/billing-whitelabel). Admin-only.
+            Route::get('settings/branding', [BrandingController::class, 'edit'])->name('settings.branding');
+            Route::patch('settings/branding', [BrandingController::class, 'update'])
+                ->name('settings.branding.update');
 
             // Catalog & inventory (Phase 2 · feat/catalog)
             Route::get('products/import', [ImportProductsController::class, 'create'])->name('products.import');

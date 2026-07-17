@@ -90,7 +90,7 @@ export function Receipt({
           </button>
           <button
             onClick={onDone}
-            className="flex-1 rounded-lg bg-blue-600 py-2.5 font-medium text-white hover:bg-blue-700"
+            className="flex-1 rounded-lg bg-[var(--brand)] py-2.5 font-medium text-white hover:opacity-90"
           >
             New sale
           </button>

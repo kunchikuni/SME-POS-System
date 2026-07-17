@@ -249,7 +249,7 @@ export function Till({
           <button
             onClick={() => setView('checkout')}
             disabled={cart.lines.length === 0}
-            className="mt-4 w-full rounded-lg bg-blue-600 py-3 font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+            className="mt-4 w-full rounded-lg bg-[var(--brand)] py-3 font-medium text-white hover:opacity-90 disabled:opacity-40"
           >
             {restaurant ? 'Send & settle' : 'Charge'} {formatMoney(totals.total_cents)}
           </button>

@@ -78,7 +78,7 @@ export function PairDevice({ onPaired }: { onPaired: (session: DeviceSession) =>
         <button
           onClick={pair}
           disabled={busy || token.trim() === ''}
-          className="mt-6 w-full rounded-lg bg-blue-600 py-2.5 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className="mt-6 w-full rounded-lg bg-[var(--brand)] py-2.5 font-medium text-white hover:opacity-90 disabled:opacity-50"
         >
           {busy ? 'Pairing…' : 'Pair device'}
         </button>
