@@ -14,7 +14,9 @@ use Inertia\Response;
  * The kitchen display (KDS). Back-of-house and online-only, so it lives in the
  * dashboard rather than the offline till. It reads the kitchen tickets derived
  * from restaurant sales (SyncService) and advances their status. Tickets are
- * tenant-scoped by the global scope; route-model binding can't cross tenants.
+ * tenant-scoped by the global scope on lookups here — but note that models are
+ * resolved explicitly in update(), not via implicit route-model binding; see
+ * that method for why.
  *
  * Restaurant-only: retail tenants have no tickets and this surface is hidden.
  */
@@ -43,19 +45,26 @@ class KitchenController extends Controller
         return Inertia::render('Kitchen/Index', ['orders' => $orders]);
     }
 
-    public function update(Request $request, TenantContext $tenant, KitchenOrder $kitchenOrder): RedirectResponse
+    public function update(Request $request, TenantContext $tenant, string $kitchenOrder): RedirectResponse
     {
         abort_unless($tenant->get()->isRestaurant(), 404);
+
+        // Resolved explicitly, not via implicit binding: route-model binding
+        // runs as route middleware, which can execute before ResolveTenant has
+        // set the tenant context — the tenant scope then matches nothing and
+        // binding 404s. Not the cross-tenant leak the old docblock here
+        // assumed; the scope was doing its job, just too early to see it.
+        $order = KitchenOrder::findOrFail($kitchenOrder);
 
         $validated = $request->validate([
             'status' => ['required', Rule::in(['preparing', 'ready', 'served'])],
         ]);
 
-        $kitchenOrder->status = $validated['status'];
-        if ($validated['status'] === 'ready' && $kitchenOrder->ready_at === null) {
-            $kitchenOrder->ready_at = now();
+        $order->status = $validated['status'];
+        if ($validated['status'] === 'ready' && $order->ready_at === null) {
+            $order->ready_at = now();
         }
-        $kitchenOrder->save();
+        $order->save();
 
         return back();
     }

@@ -94,10 +94,11 @@ class ProductController extends Controller
         return to_route('products.index')->with('flash', "Added {$product->name}.");
     }
 
-    public function destroy(Product $product): RedirectResponse
+    public function destroy(Request $request, string $product): RedirectResponse
     {
-        $this->authorize('administer');
-        $product->delete(); // soft delete; ledger history is preserved
+        abort_unless($request->user()->can('administer'), 403);
+
+        Product::findOrFail($product)->delete(); // soft delete; ledger history is preserved
 
         return to_route('products.index')->with('flash', 'Product removed.');
     }

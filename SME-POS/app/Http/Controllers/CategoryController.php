@@ -20,7 +20,7 @@ class CategoryController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $this->authorize('administer');
+        abort_unless($request->user()->can('administer'), 403);
 
         $request->validate([
             'name' => [
@@ -35,10 +35,11 @@ class CategoryController extends Controller
         return to_route('categories.index')->with('flash', 'Category added.');
     }
 
-    public function destroy(Category $category): RedirectResponse
+    public function destroy(Request $request, string $category): RedirectResponse
     {
-        $this->authorize('administer');
-        $category->delete();
+        abort_unless($request->user()->can('administer'), 403);
+
+        Category::findOrFail($category)->delete();
 
         return to_route('categories.index')->with('flash', 'Category removed.');
     }

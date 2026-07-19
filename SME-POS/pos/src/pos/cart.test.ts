@@ -155,7 +155,7 @@ describe('buildSaleMutation', () => {
     const { sale } = buildSaleMutation(cart, {
       cashierId: 'c1',
       currency: 'USD',
-      payments: [{ method: 'card', amount_cents: 1150 }],
+      payments: [{ method: 'ecocash', amount_cents: 1150 }],
       tableId: 'table-7',
       gratuityCents: 150,
       tenantRateBps: 0,

@@ -19,7 +19,7 @@ class ImportProductsController extends Controller
 
     public function store(Request $request, TenantContext $context): RedirectResponse
     {
-        $this->authorize('administer');
+        abort_unless($request->user()->can('administer'), 403);
 
         $request->validate([
             'file' => ['required', 'file', 'mimes:csv,txt', 'max:5120'], // 5 MB

@@ -24,6 +24,19 @@ enum Role: string
         return in_array($this, [self::Owner, self::Manager], true);
     }
 
+    /**
+     * Can sign into the dashboard at all. Cashiers and waiters are till-only —
+     * a PIN, no email, no password (Staff Management decision). Today this is
+     * the same set as canAdminister(), but it's named for its own concept
+     * deliberately: if a view-only dashboard role (e.g. bookkeeper) is ever
+     * added, dashboard access and administer-rights will diverge, and this is
+     * the seam that lets them.
+     */
+    public function canAccessDashboard(): bool
+    {
+        return in_array($this, [self::Owner, self::Manager], true);
+    }
+
     /** Can operate the till and take sales. */
     public function canSell(): bool
     {

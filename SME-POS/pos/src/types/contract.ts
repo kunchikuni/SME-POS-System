@@ -49,6 +49,17 @@ export interface StaffMember {
   pin_hash: string;
 }
 
+/**
+ * A staff change delivered via incremental pull: either an add/update (apply
+ * normally) or a tombstone (`removed: true` — deactivated since the last
+ * sync, delete the local record so their PIN stops working on this device).
+ * Bootstrap never ships tombstones — it's a fresh snapshot of who's currently
+ * active, so every entry there is implicitly a live StaffMember.
+ */
+export interface StaffSyncEntry extends StaffMember {
+  removed: boolean;
+}
+
 // ── Sale snapshot (till → server; immutable once completed) ──────────────────
 
 export interface SaleLinePayload {
@@ -114,6 +125,7 @@ export interface PullResponse {
   products: Product[];
   stock: StockLevel[];
   tables: Table[];
+  staff: StaffSyncEntry[];
 }
 
 export interface PushResponse {

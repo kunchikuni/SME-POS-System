@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\RegisteredTenantController;
+use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\AiInsightsController;
 use App\Http\Controllers\BranchController;
@@ -20,6 +21,7 @@ use App\Http\Controllers\PosShellController;
 use App\Http\Controllers\ProductExportController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\StaffController;
 use App\Http\Controllers\TenantModeController;
 use App\Http\Controllers\TransactionsController;
 use App\Http\Middleware\ResolveDevice;
@@ -130,6 +132,22 @@ Route::domain('{tenant}.' . $rootDomain)
             // Rule-based inventory/pricing insights (see AiInsightsService for
             // why these are labeled rule-based rather than AI-generated).
             Route::get('ai-insights', [AiInsightsController::class, 'index'])->name('ai-insights');
+
+            // Staff management: identity, role, branch, PIN/password. NOT
+            // scheduling or payroll — that's a separate, later surface.
+            Route::get('staff', [StaffController::class, 'index'])->name('staff.index');
+            Route::post('staff', [StaffController::class, 'store'])->name('staff.store');
+            Route::patch('staff/{staff}', [StaffController::class, 'update'])->name('staff.update');
+            Route::delete('staff/{staff}', [StaffController::class, 'destroy'])->name('staff.destroy');
+            Route::post('staff/{staff}/restore', [StaffController::class, 'restore'])->name('staff.restore');
+            Route::post('staff/{staff}/reset-pin', [StaffController::class, 'resetPin'])->name('staff.reset-pin');
+            Route::post('staff/{staff}/reset-password', [StaffController::class, 'resetPassword'])
+                ->name('staff.reset-password');
+
+            // Self-service: change my own password.
+            Route::get('settings/account', [AccountController::class, 'edit'])->name('settings.account');
+            Route::patch('settings/account/password', [AccountController::class, 'updatePassword'])
+                ->name('settings.account.password');
         });
     });
 

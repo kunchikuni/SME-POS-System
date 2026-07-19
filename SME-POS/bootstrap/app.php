@@ -33,5 +33,20 @@ return Application::configure(basePath: dirname(__DIR__))
         // globally, so central onboarding routes run without a tenant.
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->renderable(function (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e, $request) {
+            \Illuminate\Support\Facades\Log::error('404 Not Found', [
+                'url' => $request->fullUrl(),
+                'method' => $request->method(),
+                'referer' => $request->header('referer'),
+                'exception' => get_class($e)
+            ]);
+        });
+        $exceptions->renderable(function (\Illuminate\Database\Eloquent\ModelNotFoundException $e, $request) {
+            \Illuminate\Support\Facades\Log::error('404 Model Not Found', [
+                'url' => $request->fullUrl(),
+                'method' => $request->method(),
+                'referer' => $request->header('referer'),
+                'model' => $e->getModel()
+            ]);
+        });
     })->create();

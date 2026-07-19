@@ -41,7 +41,7 @@ export default function AppLayout({ children }: PropsWithChildren) {
     { label: "Transactions", href: "/transactions", icon: <IconReceipt />, match: (u) => u.startsWith("/transactions") },
     { label: "Reports", href: "/analytics", icon: <IconChart />, match: (u) => u.startsWith("/analytics") },
     { label: "AI Insights", href: "/ai-insights", icon: <IconSparkle />, match: (u) => u.startsWith("/ai-insights") },
-    { label: "Staff Management", icon: <IconUsers />, soon: true },
+    { label: "Staff Management", href: "/staff", icon: <IconUsers />, match: (u) => u.startsWith("/staff") },
     { label: "Tasks", icon: <IconTasks />, soon: true },
     { label: "Branches", href: "/branches", icon: <IconStore />, match: (u) => u.startsWith("/branches") },
     ...(tenant?.mode === "restaurant"
@@ -165,6 +165,9 @@ export default function AppLayout({ children }: PropsWithChildren) {
                           Settings
                         </Link>
                       )}
+                      <Link href="/settings/account" className="block px-3 py-2 text-sm hover:bg-canvas">
+                        Change password
+                      </Link>
                       <button
                         onClick={() => router.post("/logout")}
                         className="block w-full px-3 py-2 text-left text-sm hover:bg-canvas"

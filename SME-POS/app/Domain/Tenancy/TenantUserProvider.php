@@ -58,6 +58,12 @@ class TenantUserProvider extends EloquentUserProvider
 
         $query = $model->newQuery()->withoutGlobalScopes();
 
+        // Cashier/Waiter are till-only: no password at all (Staff Management
+        // decision). This excludes them from dashboard login attempts
+        // explicitly, rather than relying on how Hash::check() happens to
+        // behave against a NULL hash.
+        $query->whereNotNull('password');
+
         // Login is still tenant-scoped — but explicitly, by the current host's
         // tenant, not via the ambient global scope.
         if ($tenantId = $this->currentTenantId()) {

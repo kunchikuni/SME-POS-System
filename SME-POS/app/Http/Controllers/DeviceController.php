@@ -22,7 +22,7 @@ class DeviceController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $this->authorize('administer');
+        abort_unless($request->user()->can('administer'), 403);
 
         $data = $request->validate([
             'name'      => ['required', 'string', 'max:80'],
@@ -40,10 +40,11 @@ class DeviceController extends Controller
         ]);
     }
 
-    public function destroy(Device $device): RedirectResponse
+    public function destroy(Request $request, string $device): RedirectResponse
     {
-        $this->authorize('administer');
-        $device->delete();
+        abort_unless($request->user()->can('administer'), 403);
+
+        Device::findOrFail($device)->delete();
 
         return to_route('devices.index')->with('flash', 'Device removed.');
     }

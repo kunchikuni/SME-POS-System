@@ -79,6 +79,7 @@ describe('completeSale (offline hot path)', () => {
     const sale = await completeSale(cart, {
       cashierId: 'c1',
       payments: [{ method: 'cash', amount_cents: 300 }],
+      tenantRateBps: 0,
     });
 
     const stored = await db.sales.get(sale.id);
@@ -175,6 +176,7 @@ describe('syncManager.pull', () => {
       products: [product({ id: 'p1', price_cents: 199 })], // price changed on the dashboard
       stock: [{ product_id: 'p1', quantity: 3 }],
       tables: [],
+      staff: [],
     };
     vi.mocked(api.pull).mockResolvedValue(changes);
 
@@ -188,5 +190,40 @@ describe('syncManager.pull', () => {
   it('is a no-op before the first bootstrap (no cursor yet)', async () => {
     await syncManager.pull();
     expect(api.pull).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Regression: pull() originally never touched staff at all, so a newly
+   * added cashier never reached an already-paired till. Fixing that exposed a
+   * second gap — deactivating a cashier is a soft-delete, which a naive
+   * "just add staff to pull" fix would silently exclude, leaving their PIN
+   * working offline forever. The server ships a `removed` tombstone for that
+   * case; this proves the client actually acts on it.
+   */
+  it('adds new staff and revokes deactivated staff via the removed tombstone', async () => {
+    await db.staff.bulkPut([
+      { id: 'u1', name: 'Tariro', role: 'cashier', pin_hash: 'hash1' },
+      { id: 'u2', name: 'Grace', role: 'manager', pin_hash: 'hash2' },
+    ]);
+    await setCursor('t0');
+
+    const changes: PullResponse = {
+      cursor: 't1',
+      categories: [],
+      products: [],
+      stock: [],
+      tables: [],
+      staff: [
+        { id: 'u3', name: 'New Cashier', role: 'cashier', pin_hash: 'hash3', removed: false },
+        { id: 'u2', name: 'Grace', role: 'manager', pin_hash: 'hash2', removed: true }, // deactivated
+      ],
+    };
+    vi.mocked(api.pull).mockResolvedValue(changes);
+
+    await syncManager.pull();
+
+    expect(await db.staff.get('u1')).toBeDefined(); // untouched
+    expect(await db.staff.get('u3')).toBeDefined(); // newly added
+    expect(await db.staff.get('u2')).toBeUndefined(); // revoked — PIN can no longer match
   });
 });

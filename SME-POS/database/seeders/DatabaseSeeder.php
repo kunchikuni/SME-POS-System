@@ -13,7 +13,6 @@ use App\Models\Table;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 
 /**
  * Dev seeder. Creates one demo merchant you can actually log into, then fills
@@ -32,9 +31,9 @@ class DatabaseSeeder extends Seeder
     private const OWNER_EMAIL = 'owner@demo.test';
     private const OWNER_PASSWORD = 'password';
     private const DEVICE_TOKEN = 'demo-device-token';
-    private const CASHIER_EMAIL = 'cashier@demo.test';
-    private const CASHIER_PASSWORD = 'password';
     private const CASHIER_PIN = '1234';
+    private const MANAGER_EMAIL = 'manager@demo.test';
+    private const MANAGER_PASSWORD = 'password';
 
     public function run(RegisterTenant $register, StockService $stock): void
     {
@@ -93,17 +92,27 @@ class DatabaseSeeder extends Seeder
     /**
      * A cashier with a till PIN, so the POS shift-login works out of the box.
      * The PIN is hashed like any credential; it ships to devices in bootstrap
-     * for offline attribution only (docs/ARCHITECTURE.md §7).
+     * for offline attribution only (docs/ARCHITECTURE.md §7). Cashiers are
+     * till-only — no email, no password, no dashboard access at all (Staff
+     * Management decision) — so this also seeds one Manager with dashboard
+     * login, exercising both account shapes out of the box.
      */
     private function seedStaff(string $branchId): void
     {
+        $cashier = new User([
+            'branch_id' => $branchId,
+            'name'      => 'Tariro',
+            'role'      => 'cashier',
+        ]);
+        $cashier->setPin(self::CASHIER_PIN);
+        $cashier->save();
+
         User::create([
             'branch_id' => $branchId,
-            'name'      => 'Tariro (Cashier)',
-            'email'     => self::CASHIER_EMAIL,
-            'password'  => self::CASHIER_PASSWORD, // 'hashed' cast hashes on set
-            'role'      => 'cashier',
-            'pin_hash'  => Hash::make(self::CASHIER_PIN),
+            'name'      => 'Grace (Manager)',
+            'email'     => self::MANAGER_EMAIL,
+            'password'  => self::MANAGER_PASSWORD, // 'hashed' cast hashes on set
+            'role'      => 'manager',
         ]);
     }
 
@@ -163,6 +172,7 @@ class DatabaseSeeder extends Seeder
         $this->command->line('  Password: ' . self::OWNER_PASSWORD);
         $this->command->line("  Device token (POS): " . self::DEVICE_TOKEN);
         $this->command->line("  Cashier PIN (till): " . self::CASHIER_PIN);
+        $this->command->line("  Manager login: " . self::MANAGER_EMAIL . " / " . self::MANAGER_PASSWORD);
         $this->command->line("  Till URL: http://{$host}/pos");
         $this->command->line("  VAT rate: 15% (inclusive — Settings → General to change)");
         $this->command->line("  (add '127.0.0.1 {$host}' to your hosts file if you haven't)");

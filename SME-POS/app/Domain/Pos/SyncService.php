@@ -98,6 +98,26 @@ class SyncService
             'tables'     => Table::where('branch_id', $branchId)
                 ->where('updated_at', '>', $cursor)
                 ->get(['id', 'name', 'section', 'seats', 'is_active']),
+            // Staff added/edited/reactivated OR deactivated since the last sync.
+            // Deactivation is a soft-delete, which the default Eloquent scope
+            // would silently exclude — that's wrong here: if we just omit a
+            // deactivated cashier, the till never learns to revoke them and
+            // their PIN keeps working offline forever. withTrashed() + a
+            // `removed` flag lets the client tell "add/update" apart from
+            // "delete this local record", the same tombstone problem every
+            // sync engine has to solve for deletions.
+            'staff'      => User::withTrashed()
+                ->whereNotNull('pin_hash')
+                ->where('updated_at', '>', $cursor)
+                ->get(['id', 'name', 'role', 'pin_hash', 'deleted_at'])
+                ->makeVisible('pin_hash')
+                ->map(fn (User $u) => [
+                    'id'      => $u->id,
+                    'name'    => $u->name,
+                    'role'    => $u->role->value,
+                    'pin_hash' => $u->pin_hash,
+                    'removed' => $u->deleted_at !== null,
+                ]),
         ];
     }
 

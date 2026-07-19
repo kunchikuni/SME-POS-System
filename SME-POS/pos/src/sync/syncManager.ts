@@ -174,12 +174,27 @@ export class SyncManager {
   }
 
   private async applyPull(changes: PullResponse): Promise<void> {
-    await db.transaction('rw', db.categories, db.products, db.stock, db.diningTables, async () => {
-      if (changes.categories.length) await db.categories.bulkPut(changes.categories);
-      if (changes.products.length) await db.products.bulkPut(changes.products);
-      if (changes.stock.length) await db.stock.bulkPut(changes.stock);
-      if (changes.tables.length) await db.diningTables.bulkPut(changes.tables);
-    });
+    await db.transaction(
+      'rw',
+      db.categories,
+      db.products,
+      db.stock,
+      db.diningTables,
+      db.staff,
+      async () => {
+        if (changes.categories.length) await db.categories.bulkPut(changes.categories);
+        if (changes.products.length) await db.products.bulkPut(changes.products);
+        if (changes.stock.length) await db.stock.bulkPut(changes.stock);
+        if (changes.tables.length) await db.diningTables.bulkPut(changes.tables);
+
+        if (changes.staff.length) {
+          const removedIds = changes.staff.filter((s) => s.removed).map((s) => s.id);
+          const live = changes.staff.filter((s) => !s.removed);
+          if (removedIds.length) await db.staff.bulkDelete(removedIds);
+          if (live.length) await db.staff.bulkPut(live);
+        }
+      },
+    );
   }
 
   private handleError(error: unknown): void {

@@ -37,8 +37,9 @@ class HandleInertiaRequests extends Middleware
                 ]),
             ],
             'flash' => [
-                'message'     => fn () => $request->session()->get('flash'),
-                'deviceToken' => fn () => $request->session()->get('deviceToken'),
+                'message'         => fn () => $request->session()->get('flash'),
+                'deviceToken'     => fn () => $request->session()->get('deviceToken'),
+                'staffCredential' => fn () => $request->session()->get('staffCredential'),
             ],
         ]);
     }
