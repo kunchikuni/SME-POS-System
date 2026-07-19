@@ -29,6 +29,26 @@
   --brand-accent: var(--color-positive);
 }
 
+/*
+  Dark mode: Tailwind v4 utilities (bg-surface, text-ink, border-hairline, …)
+  reference these custom properties directly rather than inlining a resolved
+  value, so overriding them under .dark re-themes every surface that already
+  uses the token utilities — no per-component dark: variants needed. The class
+  is applied to <html> and persisted in localStorage (see AppLayout).
+*/
+.dark {
+  --color-ink: #f1f5f9;
+  --color-muted: #94a3b8;
+  --color-hairline: #293548;
+  --color-surface: #0f172a;
+  --color-canvas: #0b1220;
+}
+
+.dark html,
+html.dark {
+  color-scheme: dark;
+}
+
 html {
   background: var(--color-canvas);
   color: var(--color-ink);

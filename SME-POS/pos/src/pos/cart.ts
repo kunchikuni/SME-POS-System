@@ -1,5 +1,5 @@
-import { lineTotal, sumCents, taxOf } from '../lib/money';
-import { taxRateFor } from '../lib/tax';
+import { lineTotal, sumCents } from '../lib/money';
+import { taxRateFor, vatFromInclusive } from '../lib/tax';
 import { uuid } from '../lib/uuid';
 import type {
   PaymentMethod,
@@ -14,6 +14,11 @@ import type {
  * integer cents. The final act, buildSaleMutation, stamps client UUIDs on the
  * sale, every line, and (for tracked products) a stock movement, which is what
  * makes the resulting push idempotent (docs/ARCHITECTURE.md §5.2, §6).
+ *
+ * VAT is inclusive (docs §3): `product.price_cents` is what the customer pays.
+ * `total_cents` is simply the sum of shelf prices (+ gratuity); `subtotal_cents`
+ * and `tax_cents` are the net/VAT breakdown backed OUT of that total, for the
+ * receipt and fiscal record — they never change what's charged.
  */
 
 export interface CartLine {
@@ -26,8 +31,11 @@ export interface Cart {
 }
 
 export interface CartTotals {
+  /** Net (ex-VAT) — a breakdown figure, not what's charged. */
   subtotal_cents: number;
+  /** VAT backed out of the inclusive total — a breakdown figure. */
   tax_cents: number;
+  /** What the customer actually pays: sum of shelf (inclusive) prices. */
   total_cents: number;
   count: number;
 }
@@ -62,17 +70,24 @@ export function removeLine(cart: Cart, productId: string): Cart {
   return { lines: cart.lines.filter((l) => l.product.id !== productId) };
 }
 
-export function cartTotals(cart: Cart): CartTotals {
-  const lineTotals = cart.lines.map((l) => lineTotal(l.product.price_cents, l.qty));
-  const taxes = cart.lines.map((l) =>
-    taxOf(lineTotal(l.product.price_cents, l.qty), taxRateFor(l.product.tax_class)),
+/**
+ * @param tenantRateBps The tenant's configured VAT rate (Settings → General),
+ *   in basis points. Only applies to tax_class 'standard'; 'zero'/'exempt'
+ *   products never carry VAT regardless of this rate.
+ */
+export function cartTotals(cart: Cart, tenantRateBps: number): CartTotals {
+  const grossLineTotals = cart.lines.map((l) => lineTotal(l.product.price_cents, l.qty));
+  const vatPerLine = cart.lines.map((l, i) =>
+    vatFromInclusive(grossLineTotals[i], taxRateFor(l.product.tax_class, tenantRateBps)),
   );
-  const subtotal = sumCents(lineTotals);
-  const tax = sumCents(taxes);
+
+  const total = sumCents(grossLineTotals);
+  const tax = sumCents(vatPerLine);
+
   return {
-    subtotal_cents: subtotal,
+    subtotal_cents: total - tax,
     tax_cents: tax,
-    total_cents: subtotal + tax,
+    total_cents: total,
     count: cart.lines.reduce((n, l) => n + l.qty, 0),
   };
 }
@@ -90,9 +105,10 @@ export function buildSaleMutation(
     payments: PaymentInput[];
     tableId?: string | null;
     gratuityCents?: number;
+    tenantRateBps: number;
   },
 ): SaleCreateMutation {
-  const totals = cartTotals(cart);
+  const totals = cartTotals(cart, options.tenantRateBps);
   const occurredAt = new Date().toISOString();
   const gratuity = options.gratuityCents ?? 0;
 

@@ -23,9 +23,11 @@ class PosController extends Controller
             'device' => ['id' => $d->id, 'name' => $d->name],
             'branch' => ['id' => $d->branch_id, 'name' => $d->branch?->name],
             'tenant' => [
-                'name'  => $tenant->get()->name,
-                'theme' => $tenant->get()->theme(),
-                'mode'  => $tenant->get()->mode ?? 'retail',
+                'name'        => $tenant->get()->name,
+                'theme'       => $tenant->get()->theme(),
+                'mode'        => $tenant->get()->mode ?? 'retail',
+                'currency'    => $tenant->get()->currency ?? 'USD',
+                'taxRateBps'  => $tenant->get()->taxRateBasisPoints(),
             ],
         ]);
     }

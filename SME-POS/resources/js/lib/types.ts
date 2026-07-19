@@ -7,9 +7,16 @@ export interface BrandProps {
 
 export interface TenantProps {
   name: string;
+  mode: "retail" | "restaurant";
   onTrial: boolean;
   trialEnd: string | null;
-  theme: Record<string, string>;
+  theme: {
+    primary?: string;
+    accent?: string;
+    foreground?: string;
+    logo_url?: string | null;
+    [key: string]: string | null | undefined;
+  };
 }
 
 export interface AuthUser {

@@ -1,6 +1,7 @@
 import { Head, useForm } from "@inertiajs/react";
 import type { FormEvent } from "react";
 import AppLayout from "../../Layouts/AppLayout";
+import { SettingsTabs } from "./SettingsTabs";
 
 interface Branding {
   name: string;
@@ -31,10 +32,9 @@ export default function BrandingSettings({ branding, tenantDomain }: Props) {
   return (
     <AppLayout>
       <Head title="Branding" />
-      <h1 className="text-xl font-semibold tracking-tight text-slate-900">Branding</h1>
-      <p className="mt-1 text-sm text-slate-500">
-        Your brand across the dashboard, till, and receipts. Customers see this, not Wivae.
-      </p>
+      <h1 className="text-xl font-semibold tracking-tight text-slate-900">Settings</h1>
+      <p className="mt-1 text-sm text-slate-500">Manage your store configuration</p>
+      <SettingsTabs active="branding" />
 
       <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-2">
         {/* Form */}

@@ -57,6 +57,7 @@ describe('outbox', () => {
       cashierId: null,
       currency: 'USD',
       payments: [],
+      tenantRateBps: 0,
     });
     await enqueue(mutation.sale.id, mutation);
     expect(await pending()).toHaveLength(1);
@@ -93,6 +94,7 @@ describe('syncManager.flush', () => {
       cashierId: null,
       currency: 'USD',
       payments: [],
+      tenantRateBps: 0,
     });
     await db.sales.put({ ...mutation.sale, sync: 'pending' });
     await enqueue(mutation.sale.id, mutation);
@@ -111,6 +113,7 @@ describe('syncManager.flush', () => {
       cashierId: null,
       currency: 'USD',
       payments: [],
+      tenantRateBps: 0,
     });
     await enqueue(mutation.sale.id, mutation);
 

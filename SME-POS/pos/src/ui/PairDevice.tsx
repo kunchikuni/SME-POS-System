@@ -23,7 +23,7 @@ export function PairDevice({ onPaired }: { onPaired: (session: DeviceSession) =>
       token: token.trim(),
       device: { id: '', name: '' },
       branch: { id: '', name: '' },
-      tenant: { name: '', theme: {}, mode: 'retail' },
+      tenant: { name: '', theme: {}, mode: 'retail', currency: 'USD', taxRateBps: 0 },
     });
 
     try {

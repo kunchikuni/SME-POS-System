@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Domain\Pos\DeviceContext;
 use App\Domain\Tenancy\TenantContext;
 use App\Domain\Tenancy\TenantUserProvider;
 use Illuminate\Support\Facades\Auth;
@@ -15,6 +16,11 @@ class AppServiceProvider extends ServiceProvider
         // One tenant per request. `scoped` resets it between requests, which
         // matters for queue workers that process many tenants' jobs in a row.
         $this->app->scoped(TenantContext::class);
+
+        // Same lifetime for the POS device: ResolveDevice sets it, the sync
+        // controller reads it — they must share one per-request instance, or
+        // the controller sees a null device.
+        $this->app->scoped(DeviceContext::class);
     }
 
     public function boot(): void

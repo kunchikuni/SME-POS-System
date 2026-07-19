@@ -4,11 +4,25 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="10d482fe-3f83-4211-beee-5366e4242d13" name="Changes" comment="" />
+    <list default="true" id="10d482fe-3f83-4211-beee-5366e4242d13" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SME-POS/ARCHITECTURE.md" beforeDir="false" afterPath="$PROJECT_DIR$/SME-POS/ARCHITECTURE.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SME-POS/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/SME-POS/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SME-POS/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/SME-POS/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SME-POS/pos/src/hardware/DeviceBridge.ts" beforeDir="false" afterPath="$PROJECT_DIR$/SME-POS/pos/src/hardware/DeviceBridge.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SME-POS/pos/src/ui/Till.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/SME-POS/pos/src/ui/Till.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SME-POS/public/pos/assets/index-BvGMEmkZ.css" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/SME-POS/public/pos/assets/index-DLCM_6_v.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/SME-POS/public/pos/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/SME-POS/public/pos/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SME-POS/public/pos/sw.js" beforeDir="false" afterPath="$PROJECT_DIR$/SME-POS/public/pos/sw.js" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ComposerSettings">
+    <execution />
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -70,7 +84,7 @@
     &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
     &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;Merging phase1&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;phase1&quot;,
     &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
     &quot;javascript.preferred.runtime.type.id&quot;: &quot;node&quot;,
     &quot;last_opened_file_path&quot;: &quot;C:/Users/KUN CHIKUNI/WebstormProjects/SME-POS-System/SME-POS&quot;,
@@ -111,7 +125,11 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1784063701241</updated>
-      <workItem from="1784063702712" duration="5041000" />
+      <workItem from="1784063702712" duration="7767000" />
+      <workItem from="1784096029975" duration="155000" />
+      <workItem from="1784225572744" duration="5000" />
+      <workItem from="1784225618814" duration="3000" />
+      <workItem from="1784225861826" duration="66000" />
     </task>
     <servers />
   </component>

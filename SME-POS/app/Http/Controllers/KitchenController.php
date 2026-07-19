@@ -35,9 +35,9 @@ class KitchenController extends Controller
                 'placed_at' => $o->placed_at?->toIso8601String(),
                 'table'     => $o->table?->name,
                 'items'     => $o->sale?->lines->map(fn ($l) => [
-                        'name' => $l->name,
-                        'qty'  => $l->qty,
-                    ]) ?? [],
+                    'name' => $l->name,
+                    'qty'  => $l->qty,
+                ]) ?? [],
             ]);
 
         return Inertia::render('Kitchen/Index', ['orders' => $orders]);

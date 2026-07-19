@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
-import { verifyPin } from '../pos/pin';
+import { MissingPinHashError, verifyPin } from '../pos/pin';
 import { startShift, type Shift } from '../pos/shift';
 import type { StaffMember } from '../types/contract';
 import { SyncBadge } from './Shared';
@@ -65,25 +65,36 @@ function PinPad({
   onStart: (shift: Shift) => void;
 }) {
   const [pin, setPin] = useState('');
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
 
   async function submit(next: string) {
     setChecking(true);
-    const ok = await verifyPin(next, staff.pin_hash);
-    setChecking(false);
-    if (ok) {
-      onStart(startShift(staff));
-    } else {
-      setError(true);
+    try {
+      const ok = await verifyPin(next, staff.pin_hash);
+      if (ok) {
+        onStart(startShift(staff));
+        return;
+      }
+      setError('Incorrect PIN. Try again.');
       setPin('');
+    } catch (e) {
+      // Not a wrong PIN — this device has no usable hash for this cashier.
+      if (e instanceof MissingPinHashError) {
+        setError('No PIN set up for this cashier on this device. Sync the till, or set their PIN in the dashboard.');
+      } else {
+        setError('Couldn’t check that PIN. Try again.');
+      }
+      setPin('');
+    } finally {
+      setChecking(false);
     }
   }
 
   function press(digit: string) {
     if (checking || pin.length >= PIN_LENGTH) return;
     const next = pin + digit;
-    setError(false);
+    setError(null);
     setPin(next);
     if (next.length === PIN_LENGTH) void submit(next);
   }
@@ -109,7 +120,7 @@ function PinPad({
           ))}
         </div>
 
-        {error && <p className="mb-3 text-sm text-red-600">Incorrect PIN. Try again.</p>}
+        {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
 
         <div className="grid grid-cols-3 gap-3">
           {keys.map((k) => (
@@ -130,7 +141,7 @@ function PinPad({
           </button>
           <button
             onClick={() => {
-              setError(false);
+              setError(null);
               setPin((p) => p.slice(0, -1));
             }}
             className="rounded-xl py-4 text-xl text-slate-500 hover:bg-slate-100"

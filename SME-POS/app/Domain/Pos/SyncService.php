@@ -42,8 +42,12 @@ class SyncService
             'stock'      => StockLevel::where('branch_id', $branchId)
                 ->get(['product_id', 'quantity']),
             // PIN hashes let cashiers log into a shift offline (attribution only).
+            // NB: User::$hidden contains 'pin_hash', which strips it during JSON
+            // serialization even when explicitly selected — makeVisible() is
+            // required or the till receives staff with no hash and every PIN fails.
             'staff'      => User::whereNotNull('pin_hash')
-                ->get(['id', 'name', 'role', 'pin_hash']),
+                ->get(['id', 'name', 'role', 'pin_hash'])
+                ->makeVisible('pin_hash'),
             // Restaurant floor plan (empty for retail tenants).
             'tables'     => Table::where('branch_id', $branchId)
                 ->where('is_active', true)

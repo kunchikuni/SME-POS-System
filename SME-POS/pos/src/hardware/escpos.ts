@@ -107,9 +107,9 @@ export function encodeReceipt(context: ReceiptContext, options: EncodeOptions = 
   }
 
   b.line(divider(columns));
-  b.line(row('Subtotal', formatMoney(sale.subtotal_cents, sale.currency), columns));
+  b.line(row('Net (ex VAT)', formatMoney(sale.subtotal_cents, sale.currency), columns));
   if (sale.tax_cents > 0) {
-    b.line(row('Tax', formatMoney(sale.tax_cents, sale.currency), columns));
+    b.line(row('VAT (included)', formatMoney(sale.tax_cents, sale.currency), columns));
   }
   if (sale.gratuity_cents > 0) {
     b.line(row('Gratuity', formatMoney(sale.gratuity_cents, sale.currency), columns));

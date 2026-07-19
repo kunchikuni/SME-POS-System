@@ -3,15 +3,25 @@
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\RegisteredTenantController;
 use App\Http\Controllers\AnalyticsController;
+use App\Http\Controllers\AiInsightsController;
+use App\Http\Controllers\BranchController;
 use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeviceController;
+use App\Http\Controllers\BarcodeSheetController;
 use App\Http\Controllers\ImportProductsController;
+use App\Http\Controllers\ImportTemplateController;
 use App\Http\Controllers\KitchenController;
+use App\Http\Controllers\OrdersController;
 use App\Http\Controllers\Pos\PosController;
 use App\Http\Controllers\Pos\SyncController;
 use App\Http\Controllers\PosShellController;
+use App\Http\Controllers\ProductExportController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\TenantModeController;
+use App\Http\Controllers\TransactionsController;
 use App\Http\Middleware\ResolveDevice;
 use App\Http\Middleware\ResolveTenant;
 use Illuminate\Support\Facades\Route;
@@ -57,8 +67,13 @@ Route::domain('{tenant}.' . $rootDomain)
         Route::middleware('auth')->group(function () {
             Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
-            Route::get('/dashboard', fn () => Inertia::render('Dashboard/Index'))
+            Route::get('/dashboard', [DashboardController::class, 'index'])
                 ->name('dashboard');
+
+            // Retail/restaurant toggle (§1: mode is a tenant setting, not a
+            // fork). Admin-gated in the controller, same pattern as branding.
+            Route::patch('settings/mode', [TenantModeController::class, 'update'])
+                ->name('settings.mode');
 
             // Analytics (Phase 6 · feat/analytics): sales, top products, dead
             // stock, branch performance — read models over the sales ledger.
@@ -72,6 +87,13 @@ Route::domain('{tenant}.' . $rootDomain)
             // Catalog & inventory (Phase 2 · feat/catalog)
             Route::get('products/import', [ImportProductsController::class, 'create'])->name('products.import');
             Route::post('products/import', [ImportProductsController::class, 'store']);
+
+            // Inventory tools (feat/inventory-tools). Declared BEFORE the
+            // products resource so these literal paths aren't captured by
+            // products/{product}.
+            Route::get('products/template', ImportTemplateController::class)->name('products.template');
+            Route::get('products/export', ProductExportController::class)->name('products.export');
+            Route::get('products/barcodes', BarcodeSheetController::class)->name('products.barcodes');
             Route::resource('products', ProductController::class)
                 ->only(['index', 'create', 'store', 'destroy']);
             Route::resource('categories', CategoryController::class)
@@ -86,6 +108,28 @@ Route::domain('{tenant}.' . $rootDomain)
             Route::get('kitchen', [KitchenController::class, 'index'])->name('kitchen');
             Route::patch('kitchen/{kitchenOrder}', [KitchenController::class, 'update'])
                 ->name('kitchen.update');
+
+            // Operational sales list — who sold what, per cashier (feat/ops-pages).
+            Route::get('orders', [OrdersController::class, 'index'])->name('orders');
+
+            // Financial ledger — tender-method breakdown + payment records.
+            Route::get('transactions', [TransactionsController::class, 'index'])->name('transactions');
+
+            // Branch management — CRUD, admin-gated in the controller.
+            Route::get('branches', [BranchController::class, 'index'])->name('branches.index');
+            Route::post('branches', [BranchController::class, 'store'])->name('branches.store');
+            Route::patch('branches/{branch}', [BranchController::class, 'update'])->name('branches.update');
+            Route::delete('branches/{branch}', [BranchController::class, 'destroy'])->name('branches.destroy');
+
+            // General settings — business name, currency, VAT rate. The rate
+            // configured here is what pos/src/lib/tax.ts backs out of prices.
+            Route::get('settings/general', [SettingsController::class, 'edit'])->name('settings.general');
+            Route::patch('settings/general', [SettingsController::class, 'update'])
+                ->name('settings.general.update');
+
+            // Rule-based inventory/pricing insights (see AiInsightsService for
+            // why these are labeled rule-based rather than AI-generated).
+            Route::get('ai-insights', [AiInsightsController::class, 'index'])->name('ai-insights');
         });
     });
 

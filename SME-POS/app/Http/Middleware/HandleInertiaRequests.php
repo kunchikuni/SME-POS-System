@@ -25,6 +25,7 @@ class HandleInertiaRequests extends Middleware
             ],
             'tenant' => $tenant ? [
                 'name'     => $tenant->name,
+                'mode'     => $tenant->mode,
                 'onTrial'  => $tenant->onTrial(),
                 'trialEnd' => $tenant->trial_ends_at?->toIso8601String(),
                 'theme'    => $tenant->theme(),
@@ -34,6 +35,10 @@ class HandleInertiaRequests extends Middleware
                     'name' => $u->name,
                     'role' => $u->role->value,
                 ]),
+            ],
+            'flash' => [
+                'message'     => fn () => $request->session()->get('flash'),
+                'deviceToken' => fn () => $request->session()->get('deviceToken'),
             ],
         ]);
     }

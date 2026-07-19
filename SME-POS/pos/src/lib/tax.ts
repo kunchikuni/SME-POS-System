@@ -1,18 +1,33 @@
 /**
- * Tax is resolved per product `tax_class` and returned in basis points so the
- * cart can compute integer-cent tax. The server does NOT recompute the sale —
- * it stores the client's snapshot — so this is the single source of truth for
- * tax at the point of sale.
+ * VAT is inclusive: the shelf price (`product.price_cents`) is what the
+ * customer pays. Tax is backed out of that price, not added on top — this is
+ * Zimbabwean retail convention and a deliberate decision recorded in
+ * docs/ARCHITECTURE.md §3, made after the reference designs disagreed with
+ * each other about it.
  *
- * MVP ships everything at zero. Real VAT/ZIMRA rates are configured per tenant
- * in a later phase; wiring the lookup now means that becomes data, not code.
+ * The rate is tenant-wide (Settings → General → Tax Rate), delivered with the
+ * device session as `taxRateBps` (basis points: 1500 = 15%), and applies to
+ * products with tax_class 'standard'. 'zero' and 'exempt' are always 0%,
+ * regardless of the tenant rate — that's what those classes mean.
  */
-const RATES_BASIS_POINTS: Record<string, number> = {
-  standard: 0, // e.g. 1500 for Zimbabwe 15% VAT, set per tenant later
-  zero: 0,
-  exempt: 0,
-};
 
-export function taxRateFor(taxClass: string): number {
-  return RATES_BASIS_POINTS[taxClass] ?? 0;
+export function taxRateFor(taxClass: string, tenantRateBps: number): number {
+  if (taxClass === 'zero' || taxClass === 'exempt') return 0;
+  return tenantRateBps;
+}
+
+/**
+ * Back out VAT from an inclusive amount: vat = amount * rate / (100 + rate),
+ * rate expressed in whole percent. Rounds half-up to the nearest cent so the
+ * net + vat always reconciles exactly to the inclusive amount.
+ */
+export function vatFromInclusive(amountCents: number, rateBasisPoints: number): number {
+  if (rateBasisPoints <= 0) return 0;
+  const ratePercent = rateBasisPoints / 100;
+  return Math.round((amountCents * ratePercent) / (100 + ratePercent));
+}
+
+/** The net (ex-VAT) amount for an inclusive total: amount - vat. */
+export function netFromInclusive(amountCents: number, rateBasisPoints: number): number {
+  return amountCents - vatFromInclusive(amountCents, rateBasisPoints);
 }

@@ -17,7 +17,7 @@ class Tenant extends Model
 
     protected $fillable = [
         'name', 'subdomain', 'plan', 'status', 'trial_ends_at',
-        'zimra_enabled', 'branding', 'mode',
+        'zimra_enabled', 'branding', 'mode', 'currency', 'tax_rate_bps',
     ];
 
     protected function casts(): array
@@ -26,6 +26,7 @@ class Tenant extends Model
             'trial_ends_at' => 'datetime',
             'zimra_enabled' => 'boolean',
             'branding'      => 'array',
+            'tax_rate_bps'  => 'integer',
         ];
     }
 
@@ -50,6 +51,12 @@ class Tenant extends Model
     }
 
     /** Restaurant tenants get tables, the kitchen queue, and gratuity (§Phase 5). */
+    /** VAT rate for standard-rated products, in basis points (1500 = 15%). */
+    public function taxRateBasisPoints(): int
+    {
+        return $this->tax_rate_bps ?? 0;
+    }
+
     public function isRestaurant(): bool
     {
         return $this->mode === 'restaurant';

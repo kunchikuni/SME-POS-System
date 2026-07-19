@@ -24,6 +24,7 @@ export async function completeSale(
     payments: PaymentInput[];
     tableId?: string | null;
     gratuityCents?: number;
+    tenantRateBps: number;
   },
 ): Promise<SalePayload> {
   const mutation = buildSaleMutation(cart, {
@@ -32,6 +33,7 @@ export async function completeSale(
     payments: options.payments,
     tableId: options.tableId ?? null,
     gratuityCents: options.gratuityCents ?? 0,
+    tenantRateBps: options.tenantRateBps,
   });
   const sale = mutation.sale;
 

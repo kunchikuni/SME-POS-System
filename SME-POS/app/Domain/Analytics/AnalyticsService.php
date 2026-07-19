@@ -137,6 +137,33 @@ class AnalyticsService
             ->all();
     }
 
+    /** Revenue share per category in the window — for a sales-by-category chart. */
+    public function categoryBreakdown(Carbon $from, Carbon $to): array
+    {
+        $rows = SaleLine::query()
+            ->join('sales', 'sales.id', '=', 'sale_lines.sale_id')
+            ->join('products', 'products.id', '=', 'sale_lines.product_id')
+            ->leftJoin('categories', 'categories.id', '=', 'products.category_id')
+            ->where('sales.status', 'completed')
+            ->whereBetween('sales.occurred_at', [$from, $to])
+            ->groupBy('categories.id', 'categories.name')
+            ->selectRaw(
+                'categories.id as category_id, categories.name as name, '
+                . 'SUM(sale_lines.line_total_cents) as revenue_cents'
+            )
+            ->orderByDesc('revenue_cents')
+            ->get();
+
+        $total = (int) $rows->sum('revenue_cents');
+
+        return $rows->map(fn ($r) => [
+            'category_id'    => $r->category_id,
+            'name'           => $r->name ?? 'Uncategorised',
+            'revenue_cents'  => (int) $r->revenue_cents,
+            'share_percent'  => $total > 0 ? round(($r->revenue_cents / $total) * 100, 1) : 0,
+        ])->all();
+    }
+
     /** Revenue and sale count per branch in the window. */
     public function branchPerformance(Carbon $from, Carbon $to): array
     {

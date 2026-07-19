@@ -70,6 +70,15 @@ flowchart TD
 - **Auth lives in Laravel, not Supabase.** The dashboard is server-driven with session cookies; a JWT identity system buys nothing and costs a reconciliation layer. Supabase is Postgres only.
 - **Authorization lives in Laravel Policies, not Postgres RLS.** Laravel connects with a privileged role and bypasses RLS by definition. RLS stays enabled as deny-all *defense in depth*, but it is not the primary gate. (§7)
 - **Money is integer minor units (`amount_cents`) + a `currency` column, never floats.** This is financial correctness, independent of the USD-only decision. Floats silently lose cents; a POS cannot.
+- **VAT is inclusive: the shelf price is what the customer pays.** Tax is backed
+  out of the price (`vat = price * rate / (100 + rate)`), not added on top. This
+  is Zimbabwean retail convention and it is a *decision*, not an implementation
+  detail — the reference designs contradicted each other on it (one till mockup
+  showed "VAT 15.5% (included)", one receipt showed VAT added to a subtotal), and
+  the two produce different totals from the same price list. Receipts must still
+  show the VAT breakdown for ZIMRA, so the number is displayed either way; only
+  the arithmetic differs. **Not yet implemented — `tax.ts` still returns 0% for
+  every class, so sales recorded today carry zero tax and sales are immutable.**
 - **The brand name is configuration, never a literal.** Everything reads `config('brand')`. This is also the white-label mechanism: a tenant's branding row overrides the Wivae defaults. (§8)
 
 ---
@@ -147,8 +156,32 @@ sequenceDiagram
 - **Primary authorization: Laravel Policies** against Eloquent, scoped by `TenantContext`. Every dashboard and API action passes through a policy.
 - **RLS as a tripwire.** Deny-all RLS policies on tenant tables catch a class of bugs (a query that somehow escapes the global scope), but are not relied on as the gate, because the app's DB role is privileged.
 - **Till auth is device-bound + PIN.** A provisioned device authenticates once; cashiers log into shifts with a PIN. PINs are for speed and attribution, not for securing the backend — the device credential does that.
-- **Repo/tenant data separation.** Session cookies are scoped to the tenant subdomain, so one tenant's browser session cannot address another tenant's host.
+- **The session cookie is shared across subdomains — so isolation can't lean on it.** With `SESSION_DOMAIN=.wivae.test` (leading dot), the auth cookie is sent to *every* tenant subdomain. Subdomain scoping is therefore **not** the isolation boundary. The real gates are (a) every query is tenant-scoped by the global scope, and (b) authentication verifies the user belongs to the tenant of the request host (see below). In production `SESSION_DOMAIN` drops the leading dot, but a shared parent-domain cookie is still assumed, so the host check stands regardless.
 - **Secrets never in chat or client.** Supabase keys, Paynow keys, and ZIMRA credentials live in server-side `.env` only. The anon key is never shipped to any browser — the browser never talks to Supabase directly.
+
+### Authentication is exempt from the tenant scope
+
+Session re-hydration looks the user up on every request. When that lookup ran through the `BelongsToTenant` global scope it returned `null` whenever tenant context wasn't set at that instant, which desynced the `auth` and `guest` middleware into an infinite `/login ⇄ /dashboard` redirect loop. The lesson: **a user's identity comes from the signed session cookie; their tenant is a property of the record — re-filtering the lookup by an ambient scope is both redundant and fragile.**
+
+Decision: **auth user lookups bypass the global scope, and tenant membership is verified explicitly by host.** A custom `TenantUserProvider` (registered as the `tenant` auth driver; `config/auth.php` points `providers.users.driver` at it) loads the user by their globally-unique UUID with `withoutGlobalScopes()`, then confirms `tenant_id` matches the tenant resolved from the request host. It resolves the tenant from the host directly, so it does not depend on middleware ordering. Login (`retrieveByCredentials`) stays tenant-scoped, but explicitly by the host's tenant rather than via the ambient scope. This is both the fix for the loop and a security gain: because the session cookie is shared across subdomains (above), the host check is what stops a session minted on tenant A from being replayed on tenant B's host.
+
+### Dev environment: `public/pos/` shadows routes under `artisan serve`
+
+Building the till to `public/pos/` puts a **real directory** under `public/`, and PHP's built-in server handles that badly. For any path beneath it (e.g. `/pos/session`) it treats `public/pos/index.html` as the script and sets `SCRIPT_NAME=/pos/index.html`, `PHP_SELF=/pos/index.html/session`. Symfony's `Request::prepareBaseUrl()` derives the base URL from those, and `preparePathInfo()` strips it from `REQUEST_URI`, producing `/session` instead of `/pos/session` — so **no route matches and every POS API call 404s while `route:list` shows the routes registered correctly.**
+
+That divergence is the diagnostic signature: routing is fine, the request is corrupted *below* the routing layer. Note also that `/pos` itself is served statically by the directory match, so "the till loads" does **not** prove routing works — probe a path that cannot exist on disk (`/pos/zzz`) instead.
+
+Fix: a root-level **`server.php`** (ServeCommand prefers it over the framework's bundled `resources/server.php`) resets `SCRIPT_NAME`, `SCRIPT_FILENAME`, and `PHP_SELF` to the real front controller before requiring `public/index.php`. Its static-passthrough branch is verified to still serve `/pos/assets/*`, `sw.js`, and the manifest while letting `/pos/session`, `/sync/*`, and PWA deep links reach Laravel.
+
+**Dev-only.** Under Apache/nginx the web server sets these correctly and handles static files itself (`!-f`/`!-d` rewrite conditions, or `try_files $uri $uri/ /index.php`), so `server.php` is never loaded in production.
+
+### The offline till: token auth, standalone shell, data-safe cache
+
+The POS terminal is a **standalone PWA** — its own Vite build to `public/pos/`, served at `{tenant}.wivae.test/pos` — deliberately **not** folded into `laravel-vite-plugin`. Keeping it separate lets it own a real `index.html` and a service worker with a clean `/pos/` scope; the multi-input alternative fights both. The shell is served by `PosShellController` (invokable, not a route closure, so the route stays `route:cache`-able) and runs **no `ResolveTenant`, no session, no CSRF** — it is static and tenant-agnostic.
+
+Tenancy and identity come entirely from the **device bearer token**. `ResolveDevice` hashes the token, loads the device, and binds both tenant and branch into context; the token — not the subdomain or a session — is authoritative, so sync behaves identically online, offline, and on reconnect. The `/sync/*` and `/pos/session` routes are CSRF-exempt for the same reason (stateless, token-authenticated).
+
+**Service-worker cache policy: precache the shell, never the data.** Workbox (via `vite-plugin-pwa`, `generateSW`) precaches only the app shell — JS, CSS, HTML, icons — so the till cold-loads with no network. All business data lives in IndexedDB, not the HTTP cache. API paths are excluded from navigation cache fallback (`navigateFallbackDenylist` covers `/sync/` and `/pos/session`), so the network is always authoritative for catalog and sales and the service worker can never serve a stale price or a duplicated sale. Offline reads come from the local store by design; offline writes queue in the outbox (§6) — never from a cached response.
 
 ---
 

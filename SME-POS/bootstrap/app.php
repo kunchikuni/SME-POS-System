@@ -22,6 +22,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectUsersTo('/dashboard');
         $middleware->redirectGuestsTo('/login');
 
+        // POS API is bearer-token authenticated and stateless — no session
+        // cookie, no CSRF token. Exempt it from CSRF verification.
+        $middleware->validateCsrfTokens(except: [
+            'sync/*',
+            'pos/*',
+        ]);
+
         // ResolveTenant is applied per-route-group in routes/web.php, not
         // globally, so central onboarding routes run without a tenant.
     })

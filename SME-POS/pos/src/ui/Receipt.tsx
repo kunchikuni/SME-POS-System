@@ -49,12 +49,12 @@ export function Receipt({
           <div className="my-4 border-t border-dashed border-slate-200" />
 
           <div className="flex justify-between text-sm text-slate-500">
-            <span>Subtotal</span>
+            <span>Net (ex VAT)</span>
             <span className="tabular-nums">{formatMoney(sale.subtotal_cents, sale.currency)}</span>
           </div>
           {sale.tax_cents > 0 && (
             <div className="flex justify-between text-sm text-slate-500">
-              <span>Tax</span>
+              <span>VAT (included)</span>
               <span className="tabular-nums">{formatMoney(sale.tax_cents, sale.currency)}</span>
             </div>
           )}

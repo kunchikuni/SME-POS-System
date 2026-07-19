@@ -4,11 +4,14 @@ import { cartTotals, type Cart } from '../pos/cart';
 import { completeSale } from '../pos/checkout';
 import type { PaymentMethod, SalePayload } from '../types/contract';
 
+// The Zimbabwean tender rails a till actually sees at the counter.
 const METHODS: { value: PaymentMethod; label: string }[] = [
   { value: 'cash', label: 'Cash' },
   { value: 'ecocash', label: 'EcoCash' },
-  { value: 'card', label: 'Card' },
-  { value: 'bank', label: 'Bank' },
+  { value: 'innbucks', label: 'InnBucks' },
+  { value: 'omari', label: 'Omari' },
+  { value: 'onemoney', label: 'OneMoney' },
+  { value: 'zipit', label: 'ZIPIT' },
 ];
 
 // Tip presets in basis points; -1 is the "custom amount" sentinel.
@@ -21,8 +24,10 @@ const TIPS: { label: string; bps: number }[] = [
 
 /**
  * Settle a sale: choose a tender label (Wivae never processes the money,
- * §1/§9.1) and, in restaurant mode, add a gratuity. The recorded payment is the
- * grand total = subtotal + tax + gratuity.
+ * §1/§9.1) and, in restaurant mode, add a gratuity. VAT is inclusive (§3), so
+ * the "Total" below is simply the sum of shelf prices + gratuity; "Net (ex VAT)"
+ * and "VAT X% (included)" are the breakdown backed out of that total for the
+ * receipt — they never change what's charged.
  */
 export function Checkout({
   cart,
@@ -31,6 +36,7 @@ export function Checkout({
   onCancel,
   tableId = null,
   showGratuity = false,
+  tenantRateBps,
 }: {
   cart: Cart;
   cashierId: string | null;
@@ -38,8 +44,9 @@ export function Checkout({
   onCancel: () => void;
   tableId?: string | null;
   showGratuity?: boolean;
+  tenantRateBps: number;
 }) {
-  const totals = cartTotals(cart);
+  const totals = cartTotals(cart, tenantRateBps);
   const [method, setMethod] = useState<PaymentMethod>('cash');
   const [tipBps, setTipBps] = useState(0);
   const [customTip, setCustomTip] = useState('');
@@ -51,7 +58,7 @@ export function Checkout({
     ? 0
     : tipBps === -1
       ? toCents(customTip)
-      : taxOf(totals.subtotal_cents, tipBps);
+      : taxOf(totals.total_cents, tipBps); // tip is a % of what the customer pays, not the ex-VAT net
 
   const grandTotal = totals.total_cents + gratuity;
 
@@ -67,6 +74,7 @@ export function Checkout({
         payments: [{ method, amount_cents: grandTotal }],
         tableId,
         gratuityCents: gratuity,
+        tenantRateBps,
       });
       onComplete(sale);
     } catch {
@@ -75,6 +83,8 @@ export function Checkout({
     }
   }
 
+  const ratePercent = tenantRateBps / 100;
+
   return (
     <div className="grid min-h-dvh place-items-center bg-slate-50 p-6">
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-sm">
@@ -82,16 +92,31 @@ export function Checkout({
           ← Back to order
         </button>
 
-        <div className="text-center">
+        {/* Net / VAT / Total breakdown — matches the fiscal receipt layout */}
+        <div className="space-y-1 rounded-lg bg-slate-50 p-3 text-sm">
+          <div className="flex justify-between text-slate-500">
+            <span>Net (ex VAT)</span>
+            <span className="tabular-nums">{formatMoney(totals.subtotal_cents)}</span>
+          </div>
+          {tenantRateBps > 0 && (
+            <div className="flex justify-between text-slate-500">
+              <span>VAT {ratePercent}% (included)</span>
+              <span className="tabular-nums">{formatMoney(totals.tax_cents)}</span>
+            </div>
+          )}
+          {gratuity > 0 && (
+            <div className="flex justify-between text-slate-500">
+              <span>Gratuity</span>
+              <span className="tabular-nums">{formatMoney(gratuity)}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 text-center">
           <p className="text-sm text-slate-500">Total due</p>
           <p className="text-4xl font-semibold tabular-nums text-slate-900">
             {formatMoney(grandTotal)}
           </p>
-          {gratuity > 0 && (
-            <p className="mt-1 text-xs text-slate-400">
-              {formatMoney(totals.total_cents)} + {formatMoney(gratuity)} tip
-            </p>
-          )}
         </div>
 
         {showGratuity && (
@@ -135,7 +160,7 @@ export function Checkout({
         )}
 
         <p className="mb-2 mt-6 text-sm font-medium text-slate-700">Payment method</p>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           {METHODS.map((m) => (
             <button
               key={m.value}
@@ -177,7 +202,7 @@ export function Checkout({
         <button
           onClick={confirm}
           disabled={busy}
-          className="mt-6 w-full rounded-lg bg-green-600 py-3 font-medium text-white hover:bg-green-700 disabled:opacity-50"
+          className="mt-6 w-full rounded-lg bg-[var(--brand)] py-3 font-medium text-white hover:opacity-90 disabled:opacity-50"
         >
           {busy ? 'Saving…' : 'Complete sale'}
         </button>

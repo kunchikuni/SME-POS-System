@@ -11,7 +11,7 @@
 export type ProductType = 'retail' | 'restaurant';
 
 /** A tender label, recorded for the merchant's reporting. Wivae never processes it. */
-export type PaymentMethod = 'cash' | 'ecocash' | 'card' | 'bank' | 'other';
+export type PaymentMethod = 'cash' | 'ecocash' | 'innbucks' | 'omari' | 'onemoney' | 'zipit' | 'other';
 
 // ── Catalog (server-authoritative, flows dashboard → till via pull) ──────────
 
@@ -127,7 +127,7 @@ export type TenantMode = 'retail' | 'restaurant';
 export interface SessionResponse {
   device: { id: string; name: string };
   branch: { id: string; name: string };
-  tenant: { name: string; theme: TenantTheme; mode: TenantMode };
+  tenant: { name: string; theme: TenantTheme; mode: TenantMode; currency: string; taxRateBps: number };
 }
 
 /** A restaurant floor-plan table. Only populated for restaurant tenants. */

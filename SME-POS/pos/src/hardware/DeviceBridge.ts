@@ -1,5 +1,6 @@
 import type { SalePayload } from '../types/contract';
 import { printerService } from './printerService';
+import { isScanSupported, scanOnce } from './barcodeScanner';
 
 /**
  * Every hardware capability sits behind this one interface, so the React POS
@@ -42,7 +43,7 @@ export class WebDeviceBridge implements DeviceBridge {
   get capabilities(): DeviceCapabilities {
     return {
       print: true,
-      scan: false,
+      scan: isScanSupported(),
       cashDrawer: printerService.isConnected(),
     };
   }
@@ -51,8 +52,14 @@ export class WebDeviceBridge implements DeviceBridge {
     await printerService.printReceipt(context);
   }
 
+  /**
+   * Headless scan for non-UI callers. The till itself uses ScannerModal, which
+   * shows a camera preview and aiming guide — a better experience than a bare
+   * promise. Both funnel through the same barcodeScanner module.
+   */
   async scanBarcode(): Promise<string | null> {
-    return null;
+    if (!isScanSupported()) return null;
+    return scanOnce();
   }
 
   async openDrawer(): Promise<void> {

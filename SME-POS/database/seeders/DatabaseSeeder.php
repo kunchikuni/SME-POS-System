@@ -56,6 +56,11 @@ class DatabaseSeeder extends Seeder
         app(TenantContext::class)->set($tenant);
         $branchId = Branch::where('is_default', true)->value('id');
 
+        // 15% VAT, matching the reference receipts — so the inclusive-VAT
+        // breakdown (Net / VAT / Total) is actually exercised out of the box
+        // rather than sitting dormant at the 0% default (docs/ARCHITECTURE.md §3).
+        $tenant->update(['tax_rate_bps' => 1500]);
+
         $this->seedCatalogue($stock, $branchId);
         $this->seedDevice($branchId);
         $this->seedStaff($branchId);
@@ -159,6 +164,7 @@ class DatabaseSeeder extends Seeder
         $this->command->line("  Device token (POS): " . self::DEVICE_TOKEN);
         $this->command->line("  Cashier PIN (till): " . self::CASHIER_PIN);
         $this->command->line("  Till URL: http://{$host}/pos");
+        $this->command->line("  VAT rate: 15% (inclusive — Settings → General to change)");
         $this->command->line("  (add '127.0.0.1 {$host}' to your hosts file if you haven't)");
         $this->command->newLine();
         $this->command->line("  Restaurant mode (tables + kitchen at /kitchen): set the demo");

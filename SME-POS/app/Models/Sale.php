@@ -47,6 +47,11 @@ class Sale extends Model
         return $this->hasMany(Payment::class);
     }
 
+    public function cashier(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cashier_id');
+    }
+
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);

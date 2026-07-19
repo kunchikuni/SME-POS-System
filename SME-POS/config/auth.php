@@ -64,7 +64,7 @@ return [
     'providers' => [
         'users' => [
             'driver' => 'tenant',
-            'model' => env('AUTH_MODEL', User::class),
+            'model' => env('AUTH_MODEL', App\Models\User::class),
         ],
 
         // 'users' => [
