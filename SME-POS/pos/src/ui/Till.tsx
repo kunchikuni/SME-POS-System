@@ -28,6 +28,7 @@ import { Receipt } from './Receipt';
 import { PrinterSettings } from './PrinterSettings';
 import { FloorPlan } from './FloorPlan';
 import { ScannerModal } from './ScannerModal';
+import { TasksPanel } from './TasksPanel';
 import { isScanSupported } from '../hardware/barcodeScanner';
 
 type View = 'floor' | 'catalog' | 'checkout' | 'receipt';
@@ -65,6 +66,7 @@ export function Till({
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [showPrinter, setShowPrinter] = useState(false);
+  const [showTasks, setShowTasks] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [scanMiss, setScanMiss] = useState<string | null>(null);
 
@@ -220,6 +222,12 @@ export function Till({
           <div className="flex items-center gap-4">
             <SyncBadge />
             <button
+              onClick={() => setShowTasks(true)}
+              className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-200"
+            >
+              Tasks
+            </button>
+            <button
               onClick={() => setShowPrinter(true)}
               className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-200"
             >
@@ -235,6 +243,7 @@ export function Till({
         </header>
 
         {showPrinter && <PrinterSettings onClose={() => setShowPrinter(false)} />}
+        {showTasks && <TasksPanel cashierId={shift.cashierId} onClose={() => setShowTasks(false)} />}
 
         <div className="mb-4 flex gap-2">
           <input

@@ -46,10 +46,6 @@ class ResolveTenant
 
         $this->context->set($tenant);
 
-        // Remove the tenant parameter from the route so it doesn't get injected
-        // positionally as the first argument to every controller method.
-        $request->route()->forgetParameter('tenant');
-
         // The {tenant} domain segment is a route parameter. Without a default,
         // route('login') / route('dashboard') throw "Missing parameter: tenant".
         // Setting it here lets every named route on the subdomain resolve
@@ -58,6 +54,17 @@ class ResolveTenant
 
         // Make the resolved tenant available to Inertia shared props / views.
         $request->attributes->set('tenant', $tenant);
+
+        // {tenant} is a domain wildcard, not a URI parameter — but it still
+        // lives in the matched route's parameter bag alongside real URI
+        // parameters like {staff}/{branch}. Left there, it can leak into a
+        // scalar-typed controller argument on routes with only one other
+        // parameter (e.g. `update(Request $request, string $staff)` receiving
+        // "demo" — the tenant subdomain — instead of the UUID from {staff}).
+        // Nothing after this point needs it: the tenant is already resolved
+        // above from the raw host string, and URL::defaults() was set from
+        // that same string, not from this route parameter.
+        $request->route()?->forgetParameter('tenant');
 
         return $next($request);
     }

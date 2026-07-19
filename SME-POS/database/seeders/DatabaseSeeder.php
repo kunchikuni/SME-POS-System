@@ -10,6 +10,7 @@ use App\Models\Branch;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\Table;
+use App\Models\Task;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -64,6 +65,7 @@ class DatabaseSeeder extends Seeder
         $this->seedDevice($branchId);
         $this->seedStaff($branchId);
         $this->seedTables($branchId);
+        $this->seedTasks($branchId);
         $this->report();
     }
 
@@ -113,6 +115,29 @@ class DatabaseSeeder extends Seeder
             'email'     => self::MANAGER_EMAIL,
             'password'  => self::MANAGER_PASSWORD, // 'hashed' cast hashes on set
             'role'      => 'manager',
+        ]);
+    }
+
+    /** A few demo tasks so the checklist has something to click through immediately. */
+    private function seedTasks(string $branchId): void
+    {
+        $cashier = User::where('name', 'Tariro')->first();
+
+        Task::create([
+            'branch_id'   => $branchId,
+            'title'       => 'Count the till at open',
+            'assigned_to' => $cashier?->id,
+            'created_by'  => null,
+        ]);
+        Task::create([
+            'branch_id'   => $branchId,
+            'title'       => 'Restock fridge — Coca-Cola and Mazoe',
+            'assigned_to' => null,
+        ]);
+        Task::create([
+            'branch_id'   => $branchId,
+            'title'       => 'Wipe down counters and clean floor',
+            'due_at'      => now()->addDay(),
         ]);
     }
 
@@ -173,6 +198,7 @@ class DatabaseSeeder extends Seeder
         $this->command->line("  Device token (POS): " . self::DEVICE_TOKEN);
         $this->command->line("  Cashier PIN (till): " . self::CASHIER_PIN);
         $this->command->line("  Manager login: " . self::MANAGER_EMAIL . " / " . self::MANAGER_PASSWORD);
+        $this->command->line("  3 demo tasks seeded (dashboard: /tasks, till: Tasks button)");
         $this->command->line("  Till URL: http://{$host}/pos");
         $this->command->line("  VAT rate: 15% (inclusive — Settings → General to change)");
         $this->command->line("  (add '127.0.0.1 {$host}' to your hosts file if you haven't)");

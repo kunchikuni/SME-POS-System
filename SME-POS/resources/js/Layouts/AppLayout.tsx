@@ -42,7 +42,7 @@ export default function AppLayout({ children }: PropsWithChildren) {
     { label: "Reports", href: "/analytics", icon: <IconChart />, match: (u) => u.startsWith("/analytics") },
     { label: "AI Insights", href: "/ai-insights", icon: <IconSparkle />, match: (u) => u.startsWith("/ai-insights") },
     { label: "Staff Management", href: "/staff", icon: <IconUsers />, match: (u) => u.startsWith("/staff") },
-    { label: "Tasks", icon: <IconTasks />, soon: true },
+    { label: "Tasks", href: "/tasks", icon: <IconTasks />, match: (u) => u.startsWith("/tasks") },
     { label: "Branches", href: "/branches", icon: <IconStore />, match: (u) => u.startsWith("/branches") },
     ...(tenant?.mode === "restaurant"
       ? [{ label: "Kitchen", href: "/kitchen", icon: <IconChef />, match: (u: string) => u.startsWith("/kitchen") }]

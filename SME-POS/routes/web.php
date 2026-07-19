@@ -17,11 +17,13 @@ use App\Http\Controllers\KitchenController;
 use App\Http\Controllers\OrdersController;
 use App\Http\Controllers\Pos\PosController;
 use App\Http\Controllers\Pos\SyncController;
+use App\Http\Controllers\Pos\TaskController as PosTaskController;
 use App\Http\Controllers\PosShellController;
 use App\Http\Controllers\ProductExportController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\StaffController;
+use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TenantModeController;
 use App\Http\Controllers\TransactionsController;
 use App\Http\Middleware\ResolveDevice;
@@ -148,6 +150,17 @@ Route::domain('{tenant}.' . $rootDomain)
             Route::get('settings/account', [AccountController::class, 'edit'])->name('settings.account');
             Route::patch('settings/account/password', [AccountController::class, 'updatePassword'])
                 ->name('settings.account.password');
+
+            // Tasks — store-operations checklist. Any dashboard user can view
+            // and complete; create/assign/delete is admin-gated (controller).
+            // The till reaches Tasks via the separate Pos\TaskController above,
+            // not these routes.
+            Route::get('tasks', [TaskController::class, 'index'])->name('tasks.index');
+            Route::post('tasks', [TaskController::class, 'store'])->name('tasks.store');
+            Route::patch('tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
+            Route::post('tasks/{task}/complete', [TaskController::class, 'complete'])->name('tasks.complete');
+            Route::post('tasks/{task}/reopen', [TaskController::class, 'reopen'])->name('tasks.reopen');
+            Route::delete('tasks/{task}', [TaskController::class, 'destroy'])->name('tasks.destroy');
         });
     });
 
@@ -165,6 +178,11 @@ Route::domain('{tenant}.' . $rootDomain)
         Route::get('sync/bootstrap', [SyncController::class, 'bootstrap']);
         Route::post('sync/push', [SyncController::class, 'push']);
         Route::get('sync/pull', [SyncController::class, 'pull']);
+
+        // Tasks (till side): deliberately online-first, not part of the sync
+        // engine above — see Pos\TaskController for why.
+        Route::get('pos/tasks', [PosTaskController::class, 'index']);
+        Route::post('pos/tasks/{task}/complete', [PosTaskController::class, 'complete']);
     });
 
 /*

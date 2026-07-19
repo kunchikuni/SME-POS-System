@@ -172,7 +172,7 @@ function BranchModal({
     name: branch?.name ?? "",
     address: branch?.address ?? "",
     phone: branch?.phone ?? "",
-    manager_id: branch?.manager_id ?? null as string | null,
+    manager_id: branch?.manager_id ?? "",
     is_active: branch?.is_active ?? true,
   });
 
@@ -225,8 +225,8 @@ function BranchModal({
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Manager</label>
             <select
-              value={form.data.manager_id ?? ""}
-              onChange={(e) => form.setData("manager_id", e.target.value || null)}
+              value={form.data.manager_id}
+              onChange={(e) => form.setData("manager_id", e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               <option value="">— None —</option>

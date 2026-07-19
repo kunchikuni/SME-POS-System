@@ -71,13 +71,10 @@ class StaffController extends Controller
 
         $credential = $dashboard ? User::generateTempPassword() : User::generatePin();
 
-        // Use ?: null (not ?? null) so an empty string sent from the "None"
-        // branch select is also converted to null. ?? null only catches actual
-        // null, but HTML selects / JSON fields can send "" for no-selection.
         $user = new User([
             'name'      => $data['name'],
             'role'      => $data['role'],
-            'branch_id' => ($data['branch_id'] ?: null),
+            'branch_id' => $data['branch_id'] ?? null,
             'email'     => $dashboard ? $data['email'] : null,
             'password'  => $dashboard ? $credential : null,
         ]);
@@ -123,11 +120,8 @@ class StaffController extends Controller
         // moving a till-only user up requires an email, checked above.
         $user->name = $data['name'];
         $user->role = $data['role'];
-        // ?: null (not ?? null): converts both null AND empty string ""
-        // to null, so selecting "— None —" in the branch dropdown never
-        // reaches the DB as an empty-string FK that fails the constraint.
-        $user->branch_id = ($data['branch_id'] ?: null);
-        $user->email = $dashboard ? (($data['email'] ?: null) ?? $user->email) : null;
+        $user->branch_id = $data['branch_id'] ?? null;
+        $user->email = $dashboard ? ($data['email'] ?? $user->email) : null;
         if (! $dashboard) {
             $user->password = null;
         }

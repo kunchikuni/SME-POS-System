@@ -189,7 +189,7 @@ function StaffModal({
   const form = useForm({
     name: member?.name ?? "",
     role: member?.role ?? "cashier",
-    branch_id: member?.branch_id ?? null as string | null,
+    branch_id: member?.branch_id ?? "",
     email: member?.email ?? "",
   });
 
@@ -249,8 +249,8 @@ function StaffModal({
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Branch</label>
             <select
-              value={form.data.branch_id ?? ""}
-              onChange={(e) => form.setData("branch_id", e.target.value || null)}
+              value={form.data.branch_id}
+              onChange={(e) => form.setData("branch_id", e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               <option value="">— None —</option>

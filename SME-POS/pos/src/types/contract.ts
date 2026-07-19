@@ -151,6 +151,25 @@ export interface Table {
   is_active: boolean;
 }
 
+/**
+ * A till-visible task: read-only + completable from the till (Pos\TaskController).
+ * Deliberately not part of the sync engine — fetched live, not stored in Dexie
+ * (see docs note on Tasks scoping: a briefly-unreachable checklist isn't a
+ * business risk the way a lost sale is).
+ */
+export interface TillTask {
+  id: string;
+  title: string;
+  notes: string | null;
+  due_at: string | null;
+  assignee: string | null;
+  assigned_to: string | null;
+}
+
+export interface TillTasksResponse {
+  tasks: TillTask[];
+}
+
 export interface TenantTheme {
   [key: string]: unknown;
 }

@@ -62,10 +62,6 @@ class BranchController extends Controller
             'manager_id' => ['nullable', 'uuid', 'exists:users,id'],
         ]);
 
-        // ?: null so selecting "— None —" for manager (which sends "")
-        // is stored as null, not as an empty-string FK.
-        $data['manager_id'] = ($data['manager_id'] ?: null);
-
         Branch::create($data);
 
         return to_route('branches.index')->with('flash', "Added {$data['name']}.");
@@ -86,10 +82,6 @@ class BranchController extends Controller
             'manager_id' => ['nullable', 'uuid', 'exists:users,id'],
             'is_active'  => ['boolean'],
         ]);
-
-        // ?: null: "" from the — None — select must become null,
-        // not an empty-string FK that fails the constraint.
-        $data['manager_id'] = ($data['manager_id'] ?: null);
 
         $model->update($data);
 

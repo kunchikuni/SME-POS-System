@@ -5,6 +5,7 @@ import type {
   PullResponse,
   PushResponse,
   SessionResponse,
+  TillTasksResponse,
 } from '../types/contract';
 
 /**
@@ -79,4 +80,10 @@ export const api = {
     request<PullResponse>('GET', `/sync/pull?since=${encodeURIComponent(since)}`),
 
   push: (mutations: Mutation[]) => request<PushResponse>('POST', '/sync/push', { mutations }),
+
+  // Tasks — online-first, not part of the sync engine above.
+  tasks: () => request<TillTasksResponse>('GET', '/pos/tasks'),
+
+  completeTask: (taskId: string, cashierId: string | null) =>
+    request<{ ok: true }>('POST', `/pos/tasks/${taskId}/complete`, { cashier_id: cashierId }),
 };

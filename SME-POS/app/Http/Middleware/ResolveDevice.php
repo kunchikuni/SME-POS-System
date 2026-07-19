@@ -46,6 +46,15 @@ class ResolveDevice
         // Touch last_seen without tripping updated_at churn on every request.
         $device->forceFill(['last_seen_at' => now()])->saveQuietly();
 
+        // {tenant} is a domain wildcard sitting in the matched route's
+        // parameter bag. Left there, it can leak into a scalar-typed
+        // controller argument on routes with only one other parameter (e.g.
+        // `complete(Request $request, string $task)` receiving the tenant
+        // subdomain instead of the task UUID from {task}). See ResolveTenant
+        // for the full explanation — same bug, same fix, different middleware
+        // because the POS API uses bearer-token auth instead of session auth.
+        $request->route()?->forgetParameter('tenant');
+
         return $next($request);
     }
 }
