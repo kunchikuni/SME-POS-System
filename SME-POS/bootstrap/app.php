@@ -27,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'sync/*',
             'pos/*',
+            'billing/webhook', // Paynow's result-URL callback — external POST, no session
         ]);
 
         // ResolveTenant is applied per-route-group in routes/web.php, not

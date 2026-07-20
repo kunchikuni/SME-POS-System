@@ -205,13 +205,38 @@ This is the same mechanism as white-label: a tenant's `branding` JSONB overrides
 
 Paynow handles **Wivae's own subscription revenue**: the $30/mo BYOD plan and the $20/mo ZIMRA add-on. It lives entirely in the dashboard billing module and **never touches the till**. In-store customer payments are recorded as labels only; Wivae does not process them.
 
-> **Open item:** whether Paynow supports true card-on-file recurring billing, or whether renewals need a per-period payment prompt (link to a Paynow checkout). This shapes the subscription model and must be verified against Paynow's current API before Phase 8. Fallback (payment prompt per renewal) is standard and blocks nothing.
+**Resolved:** the open item — card-on-file recurring vs. per-period prompt — was verified, not assumed. A live forum thread on Paynow's own support site (Nov 2025) shows their documentation and their support channel directly disagreeing about whether tokenized recurring billing is actually available. Given that contradiction, `PaynowService` always creates a fresh payment prompt per billing period — never an automatic recurring charge. This is the fallback the architecture already named as safe, now confirmed as the actual implementation rather than a placeholder.
+
+**Built on the official `paynow/php-sdk` Composer package** (confirmed current from `developers.paynow.co.zw`'s PHP quickstart), not hand-rolled HTTP calls — `createPayment()` → `send()` → `redirectUrl()`/`pollUrl()`, matching Paynow's own documented usage exactly.
+
+**Webhook trust model:** Paynow's result-URL callback includes a `hash` field for authenticity, but the exact hash algorithm isn't published in their quickstart docs. Rather than guess at security-critical verification logic, the webhook handler treats the incoming POST as a mere "something changed" trigger — it never parses or trusts the body. `PaynowService::checkStatus()` then calls the SDK's documented `pollTransaction()` to fetch status directly from Paynow's own server, which is inherently trustworthy (HTTPS straight to Paynow) without needing to verify a hash on data the request itself supplied.
+
+Requires `composer require paynow/php-sdk` and `PAYNOW_INTEGRATION_ID`/`PAYNOW_INTEGRATION_KEY` in `.env` (from the Paynow merchant dashboard) before it can run live.
 
 ### 9.2 ZIMRA fiscalisation — optional, offline-aware
 
-A paid, feature-flagged add-on. Fiscalisation **cannot happen offline**: a sale completes and prints a provisional receipt, and the fiscal submission queues and fires on sync, within ZIMRA's allowed grace window. `fiscal_submissions` tracks state per sale; QR + signature are attached to the receipt on success.
+A paid, feature-flagged add-on. Fiscalisation **cannot happen offline**: a sale completes and prints a provisional receipt, and the fiscal submission queues and fires on sync, within ZIMRA's allowed grace window (72 hours, per public guidance). `fiscal_devices` tracks device registration state; QR + signature are attached to the receipt on success (not yet implemented — see below).
 
-> **Open item:** ZIMRA's FDMS API is a live external spec we will not build from memory. We pin the current spec at the start of Phase 7 and verify before implementation.
+**Spec pinned:** Fiscal Device Gateway API Specification **v7.2**, fetched directly from `zimra.co.zw`'s official downloads on 2026-07-19 (not reconstructed from memory — this was the explicit open item blocking Phase 7). Confirmed from the primary source:
+
+- **Auth is mutual TLS**, not an API key — every endpoint except `verifyTaxpayerInformation`, `registerDevice`, and `getServerCertificate` requires a client certificate FDMS itself issues.
+- **Registration**: ZIMRA portal registration → `deviceID` (int) + 8-char `activationKey` → generate a CSR (ECDSA P-256 or RSA 2048, Common Name format `ZIMRA-<serial>-<10-digit-zero-padded-deviceId>`) → `registerDevice` exchanges it for an X.509 certificate that signs everything after.
+- **Every receipt is signed**: SHA-256 hash of specific fields + a device signature using the device's private key, per the algorithm in spec §13 — the one section not fully captured in what was fetched, and not something to implement from a partial read.
+- **Fiscal day lifecycle** (`openDay` → `submitReceipt`* → `closeDay`) has strict sequential counters — `receiptGlobalNo`/`receiptCounter`/`fiscalDayNo` — that must never skip or reorder.
+- **Tax formula validated**: FDMS's own inclusive-VAT math (`taxAmount = lineTotal × rate / (1 + rate)`) is identical to what `pos/src/lib/tax.ts` already implements independently — good confirmation the till's VAT model is compatible with what fiscalisation will eventually need.
+- Environments: `https://fdmsapitest.zimra.co.zw` (test, has Swagger UI) and `https://fdmsapi.zimra.co.zw` (production).
+
+**What's built (`FiscalisationService`):** `verifyTaxpayerInformation` — the one public, read-only endpoint. An owner enters Device ID/Activation Key/Serial and it makes a real call to confirm those resolve to their actual ZIMRA taxpayer record, before anything sensitive happens. The exact REST path for this endpoint is the one piece **not** confirmed from a primary source (Swagger's spec loads via JS this environment can't execute) — it's called and, if wrong, fails loudly with ZIMRA's real HTTP response surfaced to the owner, not silently.
+
+**What's deliberately not built:** device registration (CSR generation), receipt signing, and the fiscal day state machine. Each needs either the un-fetched §13 signature algorithm confirmed byte-for-byte, or live testing against ZIMRA's test environment with real credentials — building these from an incomplete spec read is exactly the failure mode this section exists to prevent.
+
+### 9.3 HR & Payroll — salary-based, PAYE confirmed, NSSA deliberately not
+
+**Scope:** salary-based payroll only. There is no shift/clock time-tracking system, so hourly payroll isn't attempted — Tasks (§Phase "Tasks") tracks checklist items, not worked hours, and building real time-tracking is a distinct, later feature.
+
+**PAYE + AIDS levy are real**, computed with ZIMRA's confirmed monthly USD brackets ($0–$100 exempt, 20% to $300, 25% to $3,000, 40% above) plus the standard 3% AIDS levy on tax due — sourced directly from ZIMRA's own PAYE page and corroborated by an independent source, not from training-data memory. The bracket math was executed and asserted against boundary cases (below threshold, exactly at threshold, one case per band), not just hand-checked.
+
+**NSSA is deliberately not hardcoded.** Secondary sources actively disagreed on the current employee contribution rate (3.5% vs. 4.5% across different sites) and on the insurable earnings ceiling, and NSSA is administered by a separate authority from ZIMRA that wasn't independently verified. Rather than pick between two contradicting numbers, the rate and ceiling are tenant-configured (`tenants.nssa_rate_bps`/`nssa_ceiling_cents`), defaulting to 0/off — payroll runs with $0 NSSA deducted until an owner sets their own confirmed rate.
 
 ---
 
@@ -273,6 +298,6 @@ Every hardware capability sits behind one interface — `printReceipt()`, `scanB
 ## 13. Open questions
 
 1. **Root domain** — `wivae.com`, `wivae.co.zw`, or other? Seeds tenancy middleware, cookie domain, subdomain routing. (Dev uses `wivae.test`.)
-2. **Paynow recurring** — card-on-file vs per-period prompt (see §9.1). Verify before Phase 8.
-3. **ZIMRA FDMS spec** — pin current version at Phase 7 (see §9.2).
+2. ~~**Paynow recurring**~~ — resolved: per-period prompt, not card-on-file (see §9.1). Confirmed via Paynow's own support forum, not assumed.
+3. **ZIMRA FDMS spec** — pinned at v7.2 (see §9.2). Remaining: confirm the exact REST paths via Swagger, and get the full §13 signature algorithm before implementing device registration/receipt signing.
 4. **Hosting topology** — Horizon on the same box as web for MVP, or separate from day one?

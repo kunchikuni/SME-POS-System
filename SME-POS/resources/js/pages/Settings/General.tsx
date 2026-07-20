@@ -1,4 +1,5 @@
-import { Head, useForm } from "@inertiajs/react";
+import { Head, router, useForm } from "@inertiajs/react";
+import { useState } from "react";
 import type { FormEvent } from "react";
 import AppLayout from "../../Layouts/AppLayout";
 import { SettingsTabs } from "./SettingsTabs";
@@ -8,6 +9,7 @@ interface Props {
   currency: string;
   taxRatePercent: number;
   currencies: string[];
+  mode: "retail" | "restaurant";
   [key: string]: unknown;
 }
 
@@ -22,7 +24,7 @@ const CURRENCY_LABELS: Record<string, string> = {
  * cosmetic — it's exactly what pos/src/lib/tax.ts backs out of every shelf
  * price on the till, on next sync (docs/ARCHITECTURE.md §3).
  */
-export default function GeneralSettings({ name, currency, taxRatePercent, currencies }: Props) {
+export default function GeneralSettings({ name, currency, taxRatePercent, currencies, mode }: Props) {
   const form = useForm({ name, currency, taxRatePercent });
 
   function submit(e: FormEvent) {
@@ -88,7 +90,83 @@ export default function GeneralSettings({ name, currency, taxRatePercent, curren
         </button>
         {form.recentlySuccessful && <span className="ml-3 text-sm text-green-600">Saved.</span>}
       </form>
+
+      <StoreModeCard mode={mode} />
     </AppLayout>
+  );
+}
+
+function StoreModeCard({ mode }: { mode: "retail" | "restaurant" }) {
+  const [confirming, setConfirming] = useState<"retail" | "restaurant" | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  function apply(next: "retail" | "restaurant") {
+    setBusy(true);
+    router.patch(
+      "/settings/mode",
+      { mode: next },
+      { preserveScroll: true, onFinish: () => { setBusy(false); setConfirming(null); } },
+    );
+  }
+
+  return (
+    <div className="mt-6 max-w-lg rounded-xl border border-slate-200 bg-white p-6">
+      <h2 className="font-semibold text-slate-900">Store mode</h2>
+      <p className="mt-1 text-sm text-slate-500">
+        A tenant-wide setting, not a fork — this decides the till layout every cashier sees.
+      </p>
+
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        {(["retail", "restaurant"] as const).map((m) => (
+          <button
+            key={m}
+            onClick={() => (m === mode ? null : setConfirming(m))}
+            className={`rounded-lg border p-3 text-left ${
+              mode === m ? "border-blue-600 bg-blue-50" : "border-slate-200 hover:bg-slate-50"
+            }`}
+          >
+            <div className="font-medium capitalize text-slate-900">{m}</div>
+            <div className="text-xs text-slate-500">
+              {m === "retail" ? "Product grid, no tables" : "Floor plan, tables, kitchen, gratuity"}
+            </div>
+            {mode === m && <div className="mt-1 text-xs font-medium text-blue-600">Current</div>}
+          </button>
+        ))}
+      </div>
+
+      {confirming && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-6" onClick={() => setConfirming(null)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-slate-900">
+              Switch to {confirming}?
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              {confirming === "restaurant" ? (
+                <>Every till opens on a <strong>floor plan</strong> instead of the product grid. Cashiers pick a table before ordering, gratuity is offered at checkout, and the <strong>Kitchen</strong> display becomes reachable in the sidebar.</>
+              ) : (
+                <>Every till goes back to the plain product-grid checkout. Tables, gratuity, and the <strong>Kitchen</strong> display stop being used — existing table/kitchen data isn't deleted, just no longer active.</>
+              )}
+            </p>
+            <p className="mt-2 text-xs text-slate-400">Takes effect immediately for every cashier, on their next sync.</p>
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => setConfirming(null)}
+                className="flex-1 rounded-lg border border-slate-300 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => apply(confirming)}
+                disabled={busy}
+                className="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {busy ? "Switching…" : `Switch to ${confirming}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

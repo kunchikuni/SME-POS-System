@@ -1,10 +1,11 @@
 import { Link } from "@inertiajs/react";
 
 /** Tab strip shared by Settings/General and Settings/Branding. */
-export function SettingsTabs({ active }: { active: "general" | "branding" | "account" }) {
+export function SettingsTabs({ active }: { active: "general" | "branding" | "account" | "fiscalisation" }) {
   const tabs = [
     { key: "general", label: "General", href: "/settings/general" },
     { key: "branding", label: "Appearance", href: "/settings/branding" },
+    { key: "fiscalisation", label: "Fiscalisation", href: "/settings/fiscalisation" },
     { key: "account", label: "Account", href: "/settings/account" },
   ] as const;
 

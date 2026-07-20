@@ -11,10 +11,13 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\BarcodeSheetController;
+use App\Http\Controllers\BillingController;
+use App\Http\Controllers\FiscalisationController;
 use App\Http\Controllers\ImportProductsController;
 use App\Http\Controllers\ImportTemplateController;
 use App\Http\Controllers\KitchenController;
 use App\Http\Controllers\OrdersController;
+use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\Pos\PosController;
 use App\Http\Controllers\Pos\SyncController;
 use App\Http\Controllers\Pos\TaskController as PosTaskController;
@@ -67,6 +70,11 @@ Route::domain('{tenant}.' . $rootDomain)
             Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
             Route::post('/login', [AuthenticatedSessionController::class, 'store']);
         });
+
+        // Paynow's result-URL callback: no session, no CSRF token (external
+        // POST). Still runs through ResolveTenant so it knows which tenant's
+        // subscription this is for. CSRF-exempt in bootstrap/app.php.
+        Route::post('billing/webhook', [BillingController::class, 'webhook'])->name('billing.webhook');
 
         Route::middleware('auth')->group(function () {
             Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
@@ -161,6 +169,31 @@ Route::domain('{tenant}.' . $rootDomain)
             Route::post('tasks/{task}/complete', [TaskController::class, 'complete'])->name('tasks.complete');
             Route::post('tasks/{task}/reopen', [TaskController::class, 'reopen'])->name('tasks.reopen');
             Route::delete('tasks/{task}', [TaskController::class, 'destroy'])->name('tasks.destroy');
+
+            // ZIMRA Fiscalisation config (Phase 7). Only verifyDevice makes a
+            // real external call — see FiscalisationService for what's real.
+            Route::get('settings/fiscalisation', [FiscalisationController::class, 'edit'])
+                ->name('settings.fiscalisation');
+            Route::patch('settings/fiscalisation/toggle', [FiscalisationController::class, 'toggle'])
+                ->name('settings.fiscalisation.toggle');
+            Route::post('settings/fiscalisation/device', [FiscalisationController::class, 'saveDevice'])
+                ->name('settings.fiscalisation.device');
+            Route::post('settings/fiscalisation/verify', [FiscalisationController::class, 'verify'])
+                ->name('settings.fiscalisation.verify');
+
+            // Wivae's own subscription billing via Paynow (docs §9.1) — never
+            // in-store customer payments. Webhook lives outside this group
+            // (unauthenticated, above).
+            Route::get('settings/payments', [BillingController::class, 'index'])->name('settings.payments');
+            Route::post('settings/payments/subscribe', [BillingController::class, 'subscribe'])
+                ->name('settings.payments.subscribe');
+
+            // HR & Payroll (MVP: salary-based — see PayrollService).
+            Route::get('payroll', [PayrollController::class, 'index'])->name('payroll.index');
+            Route::post('payroll/run', [PayrollController::class, 'run'])->name('payroll.run');
+            Route::patch('payroll/staff/{user}/salary', [PayrollController::class, 'setSalary'])
+                ->name('payroll.salary');
+            Route::patch('payroll/nssa', [PayrollController::class, 'setNssa'])->name('payroll.nssa');
         });
     });
 

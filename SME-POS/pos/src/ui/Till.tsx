@@ -69,6 +69,7 @@ export function Till({
   const [showTasks, setShowTasks] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [scanMiss, setScanMiss] = useState<string | null>(null);
+  const [scanUnsupported, setScanUnsupported] = useState(false);
 
   // Retail checkout is single-screen: pick a method, tap Complete Sale, done.
   // Restaurant keeps the separate Checkout screen (below) because gratuity
@@ -252,16 +253,28 @@ export function Till({
             placeholder="Search by name, SKU, or barcode…"
             className="flex-1 rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           />
-          {isScanSupported() && (
-            <button
-              onClick={() => setShowScanner(true)}
-              className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 font-medium text-slate-700 hover:bg-slate-50"
-            >
-              <CameraIcon />
-              Scan
-            </button>
-          )}
+          <button
+            onClick={() => (isScanSupported() ? setShowScanner(true) : setScanUnsupported(true))}
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <CameraIcon />
+            Scan
+          </button>
         </div>
+
+        {scanUnsupported && (
+          <p className="mb-3 text-sm text-amber-600">
+            Camera scanning needs a secure connection (HTTPS) in a Chrome-based browser. A
+            USB or Bluetooth barcode scanner works right now — it just types into the search
+            box above.
+            <button
+              onClick={() => setScanUnsupported(false)}
+              className="ml-2 font-medium underline"
+            >
+              Dismiss
+            </button>
+          </p>
+        )}
 
         {scanMiss && (
           <p className="mb-3 text-sm text-amber-600">

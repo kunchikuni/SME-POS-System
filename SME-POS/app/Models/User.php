@@ -28,7 +28,7 @@ class User extends Authenticatable
     use HasUuids, HasFactory, BelongsToTenant, SoftDeletes;
 
     protected $fillable = [
-        'tenant_id', 'branch_id', 'name', 'email', 'password', 'role', 'pin_hash',
+        'tenant_id', 'branch_id', 'name', 'email', 'password', 'role', 'pin_hash', 'monthly_salary_cents',
     ];
 
     protected $hidden = ['password', 'pin_hash', 'remember_token'];
@@ -50,6 +50,11 @@ class User extends Authenticatable
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function payslips(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Payslip::class);
     }
 
     /** A fresh 4-digit till PIN. Collision odds are irrelevant — it's scoped per device, attribution not security (§7). */

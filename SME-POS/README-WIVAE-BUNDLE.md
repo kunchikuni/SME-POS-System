@@ -10,9 +10,10 @@ supersedes every previous tarball. Extract it at your Laravel project root
 
 ```
 app/          domain services, models, controllers, middleware, providers
+config/       ONLY files I author (brand.php, fiscalisation.php) — never auth.php
 routes/       web.php (dashboard + POS API + PWA shell)
 bootstrap/    app.php (middleware, CSRF exemptions)
-database/     17 migrations, seeders, factories
+database/     23 migrations, seeders, factories
 resources/    Inertia dashboard (js/), css/, views/
 pos/          the offline-first POS PWA (own Vite build)
 package.json  npm deps + scripts
@@ -21,12 +22,15 @@ package.json  npm deps + scripts
 **Excluded** (yours / framework — untouched on purpose):
 
 ```
-config/           your auth.php edit (providers.users.driver = 'tenant') is preserved
+config/auth.php   your driver = 'tenant' edit — this file was NEVER in my
+                   sandbox, so it cannot be in this zip and cannot be
+                   overwritten by extracting it, regardless of extract mode
 .env              your environment
 vendor/           composer packages
 node_modules/     npm packages
 database/*.sqlite your data
 public/pos/       BUILD OUTPUT — regenerate with `npm run pos:build`
+public/build/     BUILD OUTPUT — regenerate with `npm run build`
 ```
 
 ## Install
@@ -70,6 +74,20 @@ SESSION_DOMAIN=.wivae.test
 SESSION_DRIVER=database
 QUEUE_CONNECTION=database
 DB_CONNECTION=sqlite
+
+# Only needed to actually test Payments (Settings > Payments) — the page
+# loads fine without these, "Pay with Paynow" will fail until they're set.
+PAYNOW_INTEGRATION_ID=
+PAYNOW_INTEGRATION_KEY=
+```
+
+## Composer packages this bundle assumes
+
+Neither is required for the app to boot — only for the specific feature:
+
+```bash
+composer require paynow/php-sdk    # Payments (Settings > Payments) — official SDK, confirmed current
+composer require doctrine/dbal     # only if `php artisan migrate` errors on a column ->change() call
 ```
 
 Hosts file needs both entries (no wildcards):
@@ -156,5 +174,5 @@ POS PWA               builds (service worker + manifest)
 | 4 | feat/payments-receipts | code done — ESC/POS + Web Bluetooth; **hardware spike pending** |
 | 5 | feat/restaurant | done — tables, kitchen queue, gratuity |
 | 6 | feat/analytics | done — overview, top products, dead stock, branches |
-| 7 | feat/zimra | **not started** — pin FDMS spec first |
-| 8 | feat/billing-whitelabel | white-label done; **Paynow billing pending spec** |
+| 7 | feat/zimra | spec pinned (v7.2), verifyTaxpayer live — registration/signing not built (see docs §9.2) |
+| 8 | feat/billing-whitelabel | white-label done; Paynow billing built on official SDK (see docs §9.1) |

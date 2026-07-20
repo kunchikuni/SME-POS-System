@@ -47,9 +47,9 @@ export default function AppLayout({ children }: PropsWithChildren) {
     ...(tenant?.mode === "restaurant"
       ? [{ label: "Kitchen", href: "/kitchen", icon: <IconChef />, match: (u: string) => u.startsWith("/kitchen") }]
       : []),
-    { label: "Fiscalisation", icon: <IconChip />, soon: true, badge: "ADD-ON" },
-    { label: "Payments", icon: <IconCard />, soon: true },
-    { label: "HR & Payroll", icon: <IconBriefcase />, soon: true },
+    { label: "Fiscalisation", href: "/settings/fiscalisation", icon: <IconChip />, badge: "ADD-ON", match: (u) => u.startsWith("/settings/fiscalisation") },
+    { label: "Payments", href: "/settings/payments", icon: <IconCard />, match: (u) => u.startsWith("/settings/payments") },
+    { label: "HR & Payroll", href: "/payroll", icon: <IconBriefcase />, match: (u) => u.startsWith("/payroll") },
   ];
 
   return (
@@ -230,31 +230,74 @@ function SidebarLink({ item, url, color }: { item: NavItem; url: string; color?:
 /** Retail/Restaurant is a real tenant setting (§1) — this actually flips it. */
 function ModeToggle({ mode, color }: { mode: "retail" | "restaurant"; color?: string }) {
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState<"retail" | "restaurant" | null>(null);
 
-  function set(next: "retail" | "restaurant") {
+  function requestSwitch(next: "retail" | "restaurant") {
     if (next === mode || busy) return;
+    setConfirming(next);
+  }
+
+  function apply(next: "retail" | "restaurant") {
     setBusy(true);
     router.patch(
       "/settings/mode",
       { mode: next },
-      { preserveScroll: true, onFinish: () => setBusy(false) },
+      { preserveScroll: true, onFinish: () => { setBusy(false); setConfirming(null); } },
     );
   }
 
   return (
-    <div className="hidden overflow-hidden rounded-full border border-hairline text-xs font-medium sm:flex">
-      {(["retail", "restaurant"] as const).map((m) => (
-        <button
-          key={m}
-          onClick={() => set(m)}
-          disabled={busy}
-          className="px-3 py-1.5 capitalize transition-colors disabled:opacity-60"
-          style={mode === m ? { background: color ?? "#1d4ed8", color: "white" } : undefined}
+    <>
+      <div className="hidden overflow-hidden rounded-full border border-hairline text-xs font-medium sm:flex">
+        {(["retail", "restaurant"] as const).map((m) => (
+          <button
+            key={m}
+            onClick={() => requestSwitch(m)}
+            disabled={busy}
+            className="px-3 py-1.5 capitalize transition-colors disabled:opacity-60"
+            style={mode === m ? { background: color ?? "#1d4ed8", color: "white" } : undefined}
+          >
+            {m}
+          </button>
+        ))}
+      </div>
+
+      {confirming && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-6"
+          onClick={() => setConfirming(null)}
         >
-          {m}
-        </button>
-      ))}
-    </div>
+          <div
+            className="w-full max-w-sm rounded-2xl bg-surface p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-ink">Switch to {confirming}?</h3>
+            <p className="mt-2 text-sm text-muted">
+              This changes what every till shows, for every cashier, on their next sync.
+              {confirming === "restaurant"
+                ? " Tills open on a floor plan; tables, gratuity, and the Kitchen display turn on."
+                : " Tills go back to the plain product grid; tables, gratuity, and Kitchen stop being used."}
+            </p>
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => setConfirming(null)}
+                className="flex-1 rounded-lg border border-hairline py-2.5 text-sm font-medium text-ink hover:bg-canvas"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => apply(confirming)}
+                disabled={busy}
+                className="flex-1 rounded-lg py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                style={{ background: color ?? "#1d4ed8" }}
+              >
+                {busy ? "Switching…" : `Switch to ${confirming}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

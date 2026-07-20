@@ -19,7 +19,7 @@ class Subscription extends Model
 
     protected $fillable = [
         'tenant_id', 'plan', 'status', 'current_period_end',
-        'zimra_addon', 'provider_ref',
+        'zimra_addon', 'provider_ref', 'poll_url',
     ];
 
     protected function casts(): array

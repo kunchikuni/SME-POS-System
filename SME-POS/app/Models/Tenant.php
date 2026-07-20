@@ -18,6 +18,7 @@ class Tenant extends Model
     protected $fillable = [
         'name', 'subdomain', 'plan', 'status', 'trial_ends_at',
         'zimra_enabled', 'branding', 'mode', 'currency', 'tax_rate_bps',
+        'nssa_rate_bps', 'nssa_ceiling_cents',
     ];
 
     protected function casts(): array
@@ -27,6 +28,8 @@ class Tenant extends Model
             'zimra_enabled' => 'boolean',
             'branding'      => 'array',
             'tax_rate_bps'  => 'integer',
+            'nssa_rate_bps' => 'integer',
+            'nssa_ceiling_cents' => 'integer',
         ];
     }
 
