@@ -1,5 +1,6 @@
 import { api, ApiError, OfflineError } from './apiClient';
 import { ack, markAttempt, pending, pendingCount } from './outbox';
+import { mergeTenantInfo } from './session';
 import { db, getCursor, setCursor } from '../db/database';
 import type { BootstrapResponse, Product, PullResponse, Table } from '../types/contract';
 
@@ -21,6 +22,15 @@ export interface SyncStatus {
   pending: number;
   lastSyncedAt: string | null;
   needsReauth: boolean;
+  /**
+   * true once a background sync detects the owner changed tenant mode,
+   * currency, tax rate, or branding since this device was paired (or last
+   * reloaded). Deliberately NOT auto-applied — a mode switch restructures
+   * the whole till, and the cart lives in React state only, so a silent
+   * reload could lose an in-progress sale. The UI surfaces this as a
+   * dismissible notice the cashier acts on at a safe moment instead.
+   */
+  settingsChanged: boolean;
 }
 
 type Listener = (status: SyncStatus) => void;
@@ -32,6 +42,7 @@ export class SyncManager {
     pending: 0,
     lastSyncedAt: null,
     needsReauth: false,
+    settingsChanged: false,
   };
 
   private listeners = new Set<Listener>();
@@ -105,12 +116,30 @@ export class SyncManager {
     try {
       await this.flush();
       await this.pull();
+      await this.refreshTenantInfo();
       this.emit({ lastSyncedAt: new Date().toISOString(), online: true });
     } catch (error) {
       this.handleError(error);
     } finally {
       this.emit({ syncing: false });
       await this.refreshPending();
+    }
+  }
+
+  /**
+   * Refreshes the stored tenant mode/currency/tax-rate/theme from the server
+   * on every sync cycle — see session.ts for why this exists. Failure here
+   * (offline, etc.) is swallowed on purpose: it must never abort flush/pull,
+   * which are the operations that actually matter for not losing a sale.
+   */
+  private async refreshTenantInfo(): Promise<void> {
+    try {
+      const { tenant } = await api.session();
+      if (mergeTenantInfo(tenant)) {
+        this.emit({ settingsChanged: true });
+      }
+    } catch {
+      // Non-fatal: catalog/stock/sales sync already succeeded above.
     }
   }
 

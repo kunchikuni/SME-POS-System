@@ -54,7 +54,7 @@ export default function StaffIndex() {
   return (
     <AppLayout>
       <Head title="Staff" />
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-slate-900">Staff</h1>
           <p className="mt-1 text-sm text-slate-500">
@@ -75,6 +75,7 @@ export default function StaffIndex() {
         {staff.length === 0 ? (
           <p className="py-16 text-center text-sm text-slate-400">No staff yet.</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs text-slate-400">
               <tr>
@@ -91,6 +92,7 @@ export default function StaffIndex() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -206,7 +208,7 @@ function StaffModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 sm:p-6" onClick={onClose}>
       <form
         onSubmit={submit}
         onClick={(e) => e.stopPropagation()}

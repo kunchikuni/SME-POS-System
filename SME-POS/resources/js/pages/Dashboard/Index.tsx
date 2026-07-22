@@ -115,8 +115,8 @@ export default function DashboardIndex() {
 
       {/* Revenue trend + category split */}
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <section className="rounded-xl border border-hairline bg-surface p-5">
-          <h2 className="mb-4 text-sm font-medium text-muted">Revenue This Week</h2>
+        <section className="anim-slide-up rounded-2xl border border-hairline bg-surface p-5 shadow-xs">
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted">Revenue This Week</h2>
           {trend.every((t) => t.revenue_cents === 0) ? (
             <EmptyChart label="No sales yet this week." />
           ) : (
@@ -133,8 +133,8 @@ export default function DashboardIndex() {
           )}
         </section>
 
-        <section className="rounded-xl border border-hairline bg-surface p-5">
-          <h2 className="mb-4 text-sm font-medium text-muted">Sales by Category</h2>
+        <section className="anim-slide-up rounded-2xl border border-hairline bg-surface p-5 shadow-xs">
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted">Sales by Category</h2>
           {categories.length === 0 ? (
             <EmptyChart label="No category sales yet." />
           ) : (
@@ -163,12 +163,12 @@ export default function DashboardIndex() {
 
 function KpiCard({ label, value, icon, tint }: { label: string; value: string; icon: React.ReactNode; tint: string }) {
   return (
-    <div className="rounded-xl border border-hairline bg-surface p-4">
+    <div className="anim-pop-in rounded-2xl border border-hairline bg-surface p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted">{label}</p>
-        <span className={`grid h-8 w-8 place-items-center rounded-lg text-white ${tint}`}>{icon}</span>
+        <p className="text-xs font-medium text-muted uppercase tracking-wider">{label}</p>
+        <span className={`grid h-9 w-9 place-items-center rounded-xl text-white shadow-sm ${tint}`}>{icon}</span>
       </div>
-      <p className="font-display font-tabular mt-2 text-2xl font-semibold">{value}</p>
+      <p className="font-display font-tabular mt-3 text-2xl font-bold text-ink">{value}</p>
     </div>
   );
 }
@@ -176,7 +176,7 @@ function KpiCard({ label, value, icon, tint }: { label: string; value: string; i
 function TrialCard({ endsAt, canManage }: { endsAt: string; canManage: boolean }) {
   const days = Math.max(0, Math.ceil((new Date(endsAt).getTime() - Date.now()) / 86_400_000));
   return (
-    <div className="mt-6 flex items-center justify-between gap-4 rounded-xl border border-positive/20 bg-positive/5 p-5">
+    <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-positive/20 bg-positive/5 p-5">
       <div className="flex items-center gap-3">
         <span className="text-positive">
           <IconSparkle />

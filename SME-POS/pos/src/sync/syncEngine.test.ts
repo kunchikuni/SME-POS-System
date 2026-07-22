@@ -18,6 +18,7 @@ import { api, OfflineError } from '../sync/apiClient';
 import { db, getCursor, setCursor } from '../db/database';
 import { ack, enqueue, pending } from '../sync/outbox';
 import { syncManager } from '../sync/syncManager';
+import { getSession, saveSession } from '../sync/session';
 import { completeSale } from '../pos/checkout';
 import { buildSaleMutation, addProduct, emptyCart } from '../pos/cart';
 import type { BootstrapResponse, Product, PullResponse } from '../types/contract';
@@ -40,6 +41,8 @@ function product(overrides: Partial<Product> = {}): Product {
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  vi.restoreAllMocks(); // undo vi.spyOn(syncManager, 'sync') etc. — clearAllMocks alone doesn't
+  localStorage.clear();
   await Promise.all([
     db.categories.clear(),
     db.products.clear(),
@@ -225,5 +228,60 @@ describe('syncManager.pull', () => {
     expect(await db.staff.get('u1')).toBeDefined(); // untouched
     expect(await db.staff.get('u3')).toBeDefined(); // newly added
     expect(await db.staff.get('u2')).toBeUndefined(); // revoked — PIN can no longer match
+  });
+});
+
+/**
+ * Regression for "restaurant mode not appearing": saveSession() previously
+ * ran only once, at pairing. An owner switching Retail/Restaurant (or
+ * changing currency/tax rate) in the dashboard had no way to ever reach an
+ * already-paired till — isRestaurant() would read the same stale snapshot
+ * forever. sync() now refreshes tenant info on every cycle; these prove the
+ * full wiring, not just the pure mergeTenantInfo() function tested in
+ * session.test.ts.
+ */
+describe('syncManager.sync — tenant info refresh', () => {
+  const session = () => ({
+    token: 'demo-token',
+    device: { id: 'd1', name: 'Till 1' },
+    branch: { id: 'b1', name: 'Main' },
+    tenant: { name: 'Demo Store', theme: {}, mode: 'retail' as const, currency: 'USD', taxRateBps: 1500 },
+  });
+
+  beforeEach(async () => {
+    await setCursor('t0'); // sync()/pull() are no-ops before first bootstrap
+    vi.mocked(api.pull).mockResolvedValue({
+      cursor: 't0', categories: [], products: [], stock: [], tables: [], staff: [],
+    });
+  });
+
+  it('updates the stored session when the owner switches to restaurant mode', async () => {
+    saveSession(session());
+    vi.mocked(api.session).mockResolvedValue({
+      ...session(),
+      tenant: { ...session().tenant, mode: 'restaurant' },
+    });
+
+    await syncManager.sync();
+
+    expect(getSession()?.tenant.mode).toBe('restaurant');
+  });
+
+  it('leaves the session untouched when nothing changed', async () => {
+    saveSession(session());
+    vi.mocked(api.session).mockResolvedValue(session());
+
+    await syncManager.sync();
+
+    expect(getSession()?.tenant.mode).toBe('retail');
+  });
+
+  it('does not let a failed session refresh break the rest of the sync cycle', async () => {
+    saveSession(session());
+    vi.mocked(api.session).mockRejectedValue(new Error('network blip'));
+
+    await expect(syncManager.sync()).resolves.toBeUndefined();
+    // pull() still ran and the cursor still advanced despite session refresh failing.
+    expect(await getCursor()).toBe('t0');
   });
 });

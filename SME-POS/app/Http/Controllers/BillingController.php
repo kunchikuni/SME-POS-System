@@ -18,7 +18,7 @@ use Inertia\Response;
  */
 class BillingController extends Controller
 {
-    public function index(TenantContext $tenant): Response
+    public function index(TenantContext $tenant, PaynowService $paynow): Response
     {
         $subscription = Subscription::latest()->first();
 
@@ -35,6 +35,7 @@ class BillingController extends Controller
             ] : null,
             'plans' => config('paynow.plans'),
             'zimraAddonPrice' => config('paynow.zimra_addon_price'),
+            'paynowAvailable' => $paynow->isAvailable(),
         ]);
     }
 

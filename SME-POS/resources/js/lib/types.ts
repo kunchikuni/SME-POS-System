@@ -3,6 +3,7 @@
 export interface BrandProps {
   name: string;
   tagline: string;
+  tenantDomain?: string;
 }
 
 export interface TenantProps {

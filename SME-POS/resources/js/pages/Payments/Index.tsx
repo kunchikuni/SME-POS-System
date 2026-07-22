@@ -18,6 +18,7 @@ interface Props {
   subscription: Subscription | null;
   plans: Record<string, PlanInfo>;
   zimraAddonPrice: number;
+  paynowAvailable: boolean;
   [key: string]: unknown;
 }
 
@@ -35,7 +36,7 @@ const STATUS_TINT: Record<string, string> = {
  * Paynow's own support channel doesn't reliably confirm tokenized auto-billing
  * is available, so this doesn't pretend it does.
  */
-export default function PaymentsSettings({ tenant, subscription, plans, zimraAddonPrice }: Props) {
+export default function PaymentsSettings({ tenant, subscription, plans, zimraAddonPrice, paynowAvailable }: Props) {
   const [selectedPlan, setSelectedPlan] = useState(subscription?.plan ?? "byod");
   const [zimraAddon, setZimraAddon] = useState(subscription?.zimra_addon ?? false);
   const form = useForm({ plan: selectedPlan, zimra_addon: zimraAddon });
@@ -53,6 +54,13 @@ export default function PaymentsSettings({ tenant, subscription, plans, zimraAdd
       <h1 className="text-xl font-semibold tracking-tight text-slate-900">Payments</h1>
       <p className="mt-1 text-sm text-slate-500">Your Wivae subscription — not your customers' payments.</p>
 
+      {!paynowAvailable && (
+        <div className="mt-6 max-w-xl rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <p className="font-medium">Payments isn't available right now.</p>
+          <p className="mt-1">Please contact support to enable this for your store.</p>
+        </div>
+      )}
+
       <div className="mt-6 max-w-xl space-y-6">
         {tenant.onTrial && tenant.trialEnd && (
           <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
@@ -62,7 +70,7 @@ export default function PaymentsSettings({ tenant, subscription, plans, zimraAdd
         )}
 
         {subscription && (
-          <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-5">
             <div>
               <h2 className="font-semibold text-slate-900">Current plan</h2>
               <p className="mt-1 text-sm text-slate-500">
@@ -110,10 +118,10 @@ export default function PaymentsSettings({ tenant, subscription, plans, zimraAdd
 
           <button
             onClick={subscribe}
-            disabled={form.processing}
+            disabled={form.processing || !paynowAvailable}
             className="mt-4 w-full rounded-lg bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {form.processing ? "Redirecting to Paynow…" : "Pay with Paynow"}
+            {!paynowAvailable ? "Payments not configured" : form.processing ? "Redirecting to Paynow…" : "Pay with Paynow"}
           </button>
           <p className="mt-2 text-center text-xs text-slate-400">
             Billed as one payment per period — not an automatic recurring charge.

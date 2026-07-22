@@ -49,6 +49,10 @@ Route::domain($rootDomain)->group(function () {
     Route::post('/register', [RegisteredTenantController::class, 'store']);
 });
 
+// Fallback for local dev server (127.0.0.1 / localhost) when host doesn't match rootDomain
+Route::get('/register', [RegisteredTenantController::class, 'create']);
+Route::post('/register', [RegisteredTenantController::class, 'store']);
+
 /*
 |--------------------------------------------------------------------------
 | Tenant routes — any subdomain ({tenant}.wivae.test)
@@ -58,11 +62,14 @@ Route::domain($rootDomain)->group(function () {
 */
 Route::domain('{tenant}.' . $rootDomain)
     ->middleware(ResolveTenant::class)
-    ->group(function () {
+    ->group(function () use ($rootDomain) {
 
         // Tenant root: the natural URL to type. Guests bounce to /login via
         // the auth middleware; signed-in staff land on their dashboard.
         Route::get('/', fn () => redirect('/dashboard'));
+
+        // If someone hits /register on a tenant subdomain, redirect to central signup.
+        Route::get('/register', fn () => redirect()->away("//{$rootDomain}/register"));
 
         // Guests: the tenant login screen (ResolveTenant has set context, so
         // authentication is scoped to this subdomain's tenant).

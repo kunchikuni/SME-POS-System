@@ -13,6 +13,13 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // Tell Fortify to ignore its built-in routes — tenancy uses custom
+        // controllers (RegisteredTenantController, AuthenticatedSessionController)
+        // on bare host and subdomain routes (routes/web.php).
+        if (class_exists(\Laravel\Fortify\Fortify::class)) {
+            \Laravel\Fortify\Fortify::ignoreRoutes();
+        }
+
         // One tenant per request. `scoped` resets it between requests, which
         // matters for queue workers that process many tenants' jobs in a row.
         $this->app->scoped(TenantContext::class);

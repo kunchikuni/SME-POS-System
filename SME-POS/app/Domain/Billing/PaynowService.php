@@ -4,7 +4,6 @@ namespace App\Domain\Billing;
 
 use App\Models\Subscription;
 use App\Models\Tenant;
-use Paynow\Payments\Paynow;
 
 /**
  * Wivae's own subscription billing via Paynow — never in-store customer
@@ -28,14 +27,36 @@ use Paynow\Payments\Paynow;
  * That's the "per-period payment prompt" fallback the architecture doc
  * already named as the safe default (§9.1).
  *
- * REQUIRES: `composer require paynow/php-sdk`, and PAYNOW_INTEGRATION_ID /
- * PAYNOW_INTEGRATION_KEY in .env (from the Paynow merchant dashboard).
+ * OPTIONAL DEPENDENCY: `paynow/php-sdk` is not required for the app to boot —
+ * only for this specific feature. Every method here checks isAvailable()
+ * before touching the SDK class, and no method signature in this file
+ * type-hints `Paynow\Payments\Paynow` directly: a PHP type hint (parameter or
+ * return type) on a class that doesn't exist is a FATAL error the moment the
+ * method is reflected or called, not a catchable exception — that's what was
+ * crashing Settings → Payments before this fix. class_exists() is the correct
+ * way to check for an optional class: it attempts to autoload and returns
+ * false on failure, rather than fataling.
+ *
+ * REQUIRES (to actually send a payment): `composer require paynow/php-sdk`,
+ * and PAYNOW_INTEGRATION_ID / PAYNOW_INTEGRATION_KEY in .env.
  */
 class PaynowService
 {
-    private function client(string $resultUrl, string $returnUrl): Paynow
+    private const SDK_CLASS = 'Paynow\\Payments\\Paynow';
+
+    public function isAvailable(): bool
     {
-        return new Paynow(
+        return class_exists(self::SDK_CLASS)
+            && filled(config('paynow.integration_id'))
+            && filled(config('paynow.integration_key'));
+    }
+
+    /** @return object an instance of Paynow\Payments\Paynow — untyped so this file loads even without the SDK installed */
+    private function client(string $resultUrl, string $returnUrl): object
+    {
+        $class = self::SDK_CLASS;
+
+        return new $class(
             config('paynow.integration_id'),
             config('paynow.integration_key'),
             $returnUrl,
@@ -54,6 +75,22 @@ class PaynowService
         string $resultUrl,
         string $returnUrl,
     ): array {
+        if (! $this->isAvailable()) {
+            // The technical reason (missing Composer package) belongs in logs,
+            // not in front of a shop owner — printing package/command names
+            // into user-facing UI is an implementation-detail leak, not
+            // useful guidance for the actual audience of this screen.
+            \Illuminate\Support\Facades\Log::warning(
+                'Paynow payment attempted but the paynow/php-sdk package is not installed.'
+                . ' Run `composer require paynow/php-sdk` and set PAYNOW_INTEGRATION_ID/KEY.',
+            );
+
+            return [
+                'ok'      => false,
+                'message' => 'Payments isn’t available right now. Please contact support.',
+            ];
+        }
+
         $plan = config("paynow.plans.{$subscription->plan}");
         if ($plan === null) {
             return ['ok' => false, 'message' => 'Unknown plan.'];
@@ -90,7 +127,7 @@ class PaynowService
      */
     public function checkStatus(Subscription $subscription): bool
     {
-        if ($subscription->poll_url === null) {
+        if (! $this->isAvailable() || $subscription->poll_url === null) {
             return false;
         }
 

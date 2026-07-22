@@ -99,13 +99,20 @@ export default function GeneralSettings({ name, currency, taxRatePercent, curren
 function StoreModeCard({ mode }: { mode: "retail" | "restaurant" }) {
   const [confirming, setConfirming] = useState<"retail" | "restaurant" | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function apply(next: "retail" | "restaurant") {
     setBusy(true);
+    setError(null);
     router.patch(
       "/settings/mode",
       { mode: next },
-      { preserveScroll: true, onFinish: () => { setBusy(false); setConfirming(null); } },
+      {
+        preserveScroll: true,
+        onSuccess: () => setConfirming(null),
+        onError: () => setError("Couldn't switch modes — you may not have permission, or the request failed. Try again."),
+        onFinish: () => setBusy(false),
+      },
     );
   }
 
@@ -135,7 +142,7 @@ function StoreModeCard({ mode }: { mode: "retail" | "restaurant" }) {
       </div>
 
       {confirming && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-6" onClick={() => setConfirming(null)}>
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 sm:p-6" onClick={() => setConfirming(null)}>
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-slate-900">
               Switch to {confirming}?
@@ -148,6 +155,7 @@ function StoreModeCard({ mode }: { mode: "retail" | "restaurant" }) {
               )}
             </p>
             <p className="mt-2 text-xs text-slate-400">Takes effect immediately for every cashier, on their next sync.</p>
+            {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
             <div className="mt-5 flex gap-3">
               <button
                 onClick={() => setConfirming(null)}

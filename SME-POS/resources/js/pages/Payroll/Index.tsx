@@ -152,6 +152,7 @@ export default function PayrollIndex() {
                   </span>
                 </button>
                 {expandedRun === r.id && (
+                  <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 text-left text-xs text-slate-400">
                       <tr>
@@ -178,6 +179,7 @@ export default function PayrollIndex() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </li>
             ))}

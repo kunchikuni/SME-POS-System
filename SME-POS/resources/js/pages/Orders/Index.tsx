@@ -40,7 +40,7 @@ export default function OrdersIndex() {
   return (
     <AppLayout>
       <Head title="Orders" />
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-slate-900">Orders</h1>
           <p className="mt-1 text-sm text-slate-500">Every sale, with who rang it up.</p>
@@ -64,6 +64,7 @@ export default function OrdersIndex() {
         {sales.data.length === 0 ? (
           <p className="py-16 text-center text-sm text-slate-400">No orders in this period yet.</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs text-slate-400">
               <tr>
@@ -105,6 +106,7 @@ export default function OrdersIndex() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

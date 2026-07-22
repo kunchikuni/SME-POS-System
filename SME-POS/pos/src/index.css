@@ -1,6 +1,377 @@
 @import "tailwindcss";
 
-/* Default brand colour; overridden per tenant at boot from the session theme. */
+/* Self-hosted via @fontsource/inter instead of the Google Fonts CDN. This
+ * project's core promise is "the till must sell without internet"
+ * (docs/ARCHITECTURE.md §1) — a CDN @import for the primary UI font would
+ * silently fall back to system-ui on a first-ever offline load or a cleared
+ * cache, since Workbox's precache only covers local build assets, not
+ * external font URLs. Bundling the font locally means it's just another
+ * hashed asset in the build output, precached the same as everything else.
+ * Only the weights actually used by the design (300/400/500/600/700/800). */
+@import "@fontsource/inter/300.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/inter/800.css";
+
+/* ── Brand (overridden per tenant at boot) ──────────────────────────────── */
 :root {
-  --brand: #1d4ed8;
+    --brand: #1d4ed8;
+
+    /* ── Retail mode palette ── */
+    --retail-accent:      #7c3aed;
+    --retail-accent-2:    #4f46e5;
+    --retail-accent-glow: rgba(124, 58, 237, 0.35);
+    --retail-surface:     rgba(15, 10, 40, 0.82);
+
+    /* ── Restaurant mode palette ── */
+    --resto-accent:       #ea580c;
+    --resto-accent-2:     #d97706;
+    --resto-accent-glow:  rgba(234, 88, 12, 0.35);
+    --resto-surface:      rgba(30, 12, 5, 0.82);
+
+    /* ── Neutral surfaces ── */
+    --surface-glass:      rgba(255, 255, 255, 0.06);
+    --surface-glass-hover:rgba(255, 255, 255, 0.10);
+    --border-glass:       rgba(255, 255, 255, 0.10);
+
+    /* ── Typography ── */
+    --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+
+    /* ── Semantic theme tokens (dark default) ── */
+    --pg-bg:      #020617;
+    --pg-surface: rgba(255,255,255,0.05);
+    --pg-border:  rgba(255,255,255,0.07);
+    --pg-divider: rgba(255,255,255,0.06);
+    --pg-text:    #ffffff;
+    --pg-text-2:  #94a3b8;
+    --pg-text-3:  #475569;
+
+    /* Sidebar gradients (dark) */
+    --sb-retail-a: #0d0820;
+    --sb-retail-b: #1a0f3a;
+    --sb-retail-c: #0d1535;
+    --sb-resto-a:  #1a0800;
+    --sb-resto-b:  #2d1200;
+    --sb-resto-c:  #1a0a00;
+}
+
+/* ── Light theme token overrides ─────────────────────────────────────── */
+[data-theme="light"] {
+    --pg-bg:      #f8fafc;
+    --pg-surface: rgba(0,0,0,0.03);
+    --pg-border:  rgba(0,0,0,0.07);
+    --pg-divider: rgba(0,0,0,0.06);
+    --pg-text:    #0f172a;
+    --pg-text-2:  #475569;
+    --pg-text-3:  #94a3b8;
+
+    /* Sidebar gradients (light — soft mode tints) */
+    --sb-retail-a: #f5f3ff;
+    --sb-retail-b: #ede9fe;
+    --sb-retail-c: #eef2ff;
+    --sb-resto-a:  #fff7ed;
+    --sb-resto-b:  #ffedd5;
+    --sb-resto-c:  #fff7ed;
+}
+
+*,
+*::before,
+*::after {
+    font-family: var(--font-body);
+}
+
+/* ── Keyframes ─────────────────────────────────────────────────────────── */
+@keyframes slide-up {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes pop-in {
+    0%   { opacity: 0; transform: scale(0.94); }
+    60%  { transform: scale(1.02); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes shimmer {
+    0%   { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+}
+
+@keyframes pulse-ring {
+    0%   { box-shadow: 0 0 0 0 var(--ring-color, rgba(124,58,237,0.4)); }
+    70%  { box-shadow: 0 0 0 8px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* ── Animation utility classes ─────────────────────────────────────────── */
+.anim-slide-up  { animation: slide-up  0.22s cubic-bezier(0.22,1,0.36,1) both; }
+.anim-fade-in   { animation: fade-in   0.18s ease both; }
+.anim-pop-in    { animation: pop-in    0.25s cubic-bezier(0.22,1,0.36,1) both; }
+
+/* ── Glass card ─────────────────────────────────────────────────────────── */
+.glass-card {
+    background:    rgba(255,255,255,0.05);
+    border:        1px solid rgba(255,255,255,0.10);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+}
+
+/* ── Mode-aware sidebar backgrounds (use CSS vars to flip with theme) ── */
+.sidebar-retail {
+    background: linear-gradient(165deg, var(--sb-retail-a) 0%, var(--sb-retail-b) 50%, var(--sb-retail-c) 100%);
+}
+.sidebar-resto {
+    background: linear-gradient(165deg, var(--sb-resto-a) 0%, var(--sb-resto-b) 50%, var(--sb-resto-c) 100%);
+}
+
+/* Root-level background helper (used on main wrappers instead of bg-slate-950) */
+.pos-bg {
+    background: var(--pg-bg);
+    transition: background 0.2s ease;
+}
+
+/* Restaurant floor plan / catalog bg (same gradient as resto sidebar, full-page) */
+.resto-floor-bg {
+    background: linear-gradient(160deg, var(--sb-resto-a) 0%, var(--sb-resto-b) 55%, var(--sb-resto-c) 100%);
+    transition: background 0.2s ease;
+}
+
+/* ── Product card hover glow ─────────────────────────────────────────────── */
+.product-card {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.product-card:hover {
+    transform: translateY(-2px);
+}
+.product-card-retail:hover {
+    box-shadow: 0 8px 24px -4px rgba(124, 58, 237, 0.25);
+}
+.product-card-resto:hover  {
+    box-shadow: 0 8px 24px -4px rgba(234, 88, 12, 0.25);
+}
+
+/* ── Mode pill (read-only indicator) ──────────────────────────────────── */
+.mode-pill {
+    position:        relative;
+    display:         inline-flex;
+    align-items:     center;
+    border-radius:   9999px;
+    padding:         3px;
+    gap:             0;
+    background:      rgba(0,0,0,0.18);
+    border:          1px solid rgba(255,255,255,0.12);
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+[data-theme="light"] .mode-pill {
+    background:   rgba(0,0,0,0.06);
+    border-color: rgba(0,0,0,0.12);
+}
+.mode-pill__track {
+    position: absolute;
+    inset: 3px;
+    width: calc(50% - 3px);
+    border-radius: 9999px;
+    transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1),
+    background 0.22s ease,
+    box-shadow 0.22s ease;
+}
+.mode-pill__track--retail {
+    background:  linear-gradient(135deg, var(--retail-accent), var(--retail-accent-2));
+    box-shadow:  0 0 14px var(--retail-accent-glow);
+    transform:   translateX(0);
+}
+.mode-pill__track--resto {
+    background:  linear-gradient(135deg, var(--resto-accent), var(--resto-accent-2));
+    box-shadow:  0 0 14px var(--resto-accent-glow);
+    transform:   translateX(100%);
+}
+.mode-pill__btn {
+    position:    relative;
+    z-index:     1;
+    display:     flex;
+    align-items: center;
+    gap:         6px;
+    padding:     6px 14px;
+    border-radius: 9999px;
+    font-size:   0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+    border:      none;
+    background:  transparent;
+    /* No cursor:pointer, no hover/active states — this is a status
+       indicator, not a control (see Shared.tsx ModePill docblock). */
+}
+
+/* ── Gradient CTA buttons ─────────────────────────────────────────────── */
+.btn-retail {
+    background: linear-gradient(135deg, var(--retail-accent) 0%, var(--retail-accent-2) 100%);
+    box-shadow: 0 4px 14px -2px var(--retail-accent-glow);
+    transition: opacity 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
+}
+.btn-retail:hover:not(:disabled) {
+    opacity: 0.92;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px -2px var(--retail-accent-glow);
+}
+.btn-retail:active:not(:disabled) { transform: translateY(0); }
+.btn-retail:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-resto {
+    background: linear-gradient(135deg, var(--resto-accent) 0%, var(--resto-accent-2) 100%);
+    box-shadow: 0 4px 14px -2px var(--resto-accent-glow);
+    transition: opacity 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
+}
+.btn-resto:hover:not(:disabled) {
+    opacity: 0.92;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px -2px var(--resto-accent-glow);
+}
+.btn-resto:active:not(:disabled) { transform: translateY(0); }
+.btn-resto:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Neutral CTA — success/utility screens that aren't mode-specific
+   (Receipt, PrinterSettings, TasksPanel, ScannerModal). Deliberately not
+   violet or orange: a completed sale, or a settings panel, isn't a
+   "shopping mode" moment, so it shouldn't borrow either mode's brand. */
+.btn-neutral {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 4px 14px -2px rgba(16, 185, 129, 0.3);
+    transition: opacity 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
+}
+.btn-neutral:hover:not(:disabled) {
+    opacity: 0.92;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px -2px rgba(16, 185, 129, 0.3);
+}
+.btn-neutral:active:not(:disabled) { transform: translateY(0); }
+.btn-neutral:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-neutral-outline {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.14);
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+.btn-neutral-outline:hover:not(:disabled) {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.22);
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────── */
+.dark-scroll::-webkit-scrollbar       { width: 4px; }
+.dark-scroll::-webkit-scrollbar-track { background: transparent; }
+.dark-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+[data-theme="light"] .dark-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); }
+
+/* ── Glass card in light mode ─────────────────────────────────────── */
+[data-theme="light"] .glass-card {
+    background:   rgba(255,255,255,0.75);
+    border-color: rgba(0,0,0,0.08);
+    box-shadow:   0 1px 3px rgba(0,0,0,0.06);
+}
+
+/* ───────────────────────────────────────────────────────────────── */
+/* LIGHT MODE: Tailwind utility overrides. These target the specific          */
+/* Tailwind classes used throughout the POS components so the dark-first UI   */
+/* correctly flips when [data-theme="light"] is set on <html>.                 */
+/* ───────────────────────────────────────────────────────────────── */
+
+/* ── Text ─────────────────────────────────────────────────────────── */
+[data-theme="light"] .text-white         { color: #0f172a !important; }
+[data-theme="light"] .text-slate-200     { color: #334155 !important; }
+[data-theme="light"] .text-slate-300     { color: #475569 !important; }
+[data-theme="light"] .text-slate-400     { color: #475569 !important; }
+[data-theme="light"] .text-slate-500     { color: #64748b !important; }
+[data-theme="light"] .text-slate-600     { color: #475569 !important; }
+/* Accent text — darken for legibility on white */
+[data-theme="light"] .text-violet-200   { color: #6d28d9 !important; }
+[data-theme="light"] .text-violet-300   { color: #6d28d9 !important; }
+[data-theme="light"] .text-orange-300   { color: #c2410c !important; }
+[data-theme="light"] .text-red-400      { color: #b91c1c !important; }
+[data-theme="light"] .text-emerald-400  { color: #059669 !important; }
+[data-theme="light"] .text-amber-300    { color: #92400e !important; }
+[data-theme="light"] .text-amber-400    { color: #b45309 !important; }
+[data-theme="light"] .text-amber-500    { color: #92400e !important; }
+
+/* ── Surface / bg ────────────────────────────────────────────────── */
+[data-theme="light"] .bg-white\/4  { background-color: rgba(0,0,0,0.025) !important; }
+[data-theme="light"] .bg-white\/5  { background-color: rgba(0,0,0,0.03)  !important; }
+[data-theme="light"] .bg-white\/6  { background-color: rgba(0,0,0,0.04)  !important; }
+[data-theme="light"] .bg-white\/8  { background-color: rgba(0,0,0,0.05)  !important; }
+[data-theme="light"] .bg-white\/10 { background-color: rgba(0,0,0,0.05)  !important; }
+[data-theme="light"] .bg-white\/14 { background-color: rgba(0,0,0,0.06)  !important; }
+[data-theme="light"] .bg-white\/15 { background-color: rgba(0,0,0,0.08)  !important; }
+[data-theme="light"] .bg-black\/18 { background-color: rgba(0,0,0,0.04)  !important; }
+
+/* Product card bg (same as bg-white/5 but card has explicit border in dark) */
+[data-theme="light"] .anim-pop-in.bg-white\/5 {
+    background-color: #ffffff !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+}
+
+/* hover bg overrides */
+[data-theme="light"] .hover\:bg-white\/5:hover  { background-color: rgba(0,0,0,0.035) !important; }
+[data-theme="light"] .hover\:bg-white\/6:hover  { background-color: rgba(0,0,0,0.04)  !important; }
+[data-theme="light"] .hover\:bg-white\/10:hover { background-color: rgba(0,0,0,0.05)  !important; }
+[data-theme="light"] .hover\:bg-white\/14:hover { background-color: rgba(0,0,0,0.07)  !important; }
+[data-theme="light"] .hover\:text-slate-200:hover { color: #0f172a !important; }
+[data-theme="light"] .hover\:text-slate-300:hover { color: #334155 !important; }
+
+/* ── Rings / borders ────────────────────────────────────────────── */
+[data-theme="light"] .ring-white\/6,
+[data-theme="light"] .ring-white\/8,
+[data-theme="light"] .ring-white\/10 { --tw-ring-color: rgba(0,0,0,0.08) !important; }
+[data-theme="light"] .border-white\/6,
+[data-theme="light"] .border-white\/8,
+[data-theme="light"] .border-white\/10 { border-color: rgba(0,0,0,0.08) !important; }
+
+/* ── Inputs ────────────────────────────────────────────────────── */
+[data-theme="light"] input  { color: #0f172a; }
+[data-theme="light"] input::placeholder { color: #94a3b8 !important; }
+[data-theme="light"] input.border-white\/8 { border-color: rgba(0,0,0,0.12) !important; }
+[data-theme="light"] input.bg-white\/5     { background-color: rgba(0,0,0,0.025) !important; }
+
+/* ── Product cards: extra shadow to distinguish on light bg ────────── */
+[data-theme="light"] .product-card {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+}
+[data-theme="light"] .product-card-retail:hover {
+    box-shadow: 0 8px 24px -4px rgba(124, 58, 237, 0.20), 0 1px 3px rgba(0,0,0,0.06);
+}
+[data-theme="light"] .product-card-resto:hover {
+    box-shadow: 0 8px 24px -4px rgba(234, 88, 12, 0.20), 0 1px 3px rgba(0,0,0,0.06);
+}
+
+/* ── Print safety: the receipt must ALWAYS print light/high-contrast ──── */
+/* window.print() (printerService.ts fallback for tills with no connected
+ * thermal printer) prints the page as currently rendered. Regardless of app
+ * theme — dark by default now — printed output has to stay readable and not
+ * waste ink on a dark background some browsers print literally and others
+ * silently drop (turning light text invisible on white paper). This
+ * overrides #receipt back to light colours specifically for @media print,
+ * independent of [data-theme]. */
+@media print {
+    body * { visibility: hidden; }
+    #receipt, #receipt * { visibility: visible; }
+    #receipt {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        background: #ffffff !important;
+        color: #0f172a !important;
+        box-shadow: none !important;
+        border: none !important;
+    }
+    #receipt * {
+        background: transparent !important;
+        color: inherit !important;
+        box-shadow: none !important;
+    }
 }

@@ -130,14 +130,7 @@ export default function AppLayout({ children }: PropsWithChildren) {
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                onClick={toggleDark}
-                className="rounded-full p-2 text-muted hover:bg-canvas"
-                aria-label="Toggle theme"
-                title="Toggle theme"
-              >
-                {dark ? <IconMoon /> : <IconSun />}
-              </button>
+              <ThemeSwitch dark={dark} onToggle={toggleDark} />
 
               <div className="relative">
                 <button
@@ -231,35 +224,61 @@ function SidebarLink({ item, url, color }: { item: NavItem; url: string; color?:
 function ModeToggle({ mode, color }: { mode: "retail" | "restaurant"; color?: string }) {
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState<"retail" | "restaurant" | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   function requestSwitch(next: "retail" | "restaurant") {
     if (next === mode || busy) return;
+    setError(null);
     setConfirming(next);
   }
 
   function apply(next: "retail" | "restaurant") {
     setBusy(true);
+    setError(null);
     router.patch(
       "/settings/mode",
       { mode: next },
-      { preserveScroll: true, onFinish: () => { setBusy(false); setConfirming(null); } },
+      {
+        preserveScroll: true,
+        onSuccess: () => setConfirming(null),
+        onError: () => setError("Couldn't switch modes — you may not have permission, or the request failed. Try again."),
+        onFinish: () => setBusy(false),
+      },
     );
   }
 
   return (
     <>
-      <div className="hidden overflow-hidden rounded-full border border-hairline text-xs font-medium sm:flex">
-        {(["retail", "restaurant"] as const).map((m) => (
-          <button
-            key={m}
-            onClick={() => requestSwitch(m)}
-            disabled={busy}
-            className="px-3 py-1.5 capitalize transition-colors disabled:opacity-60"
-            style={mode === m ? { background: color ?? "#1d4ed8", color: "white" } : undefined}
-          >
-            {m}
-          </button>
-        ))}
+      <div className="mode-pill hidden sm:inline-flex" role="group" aria-label="Tenant mode">
+        <div
+          className={`mode-pill__track ${
+            mode === "retail" ? "mode-pill__track--retail" : "mode-pill__track--resto"
+          }`}
+        />
+
+        <button
+          type="button"
+          className="mode-pill__btn"
+          style={{ color: mode === "retail" ? "#fff" : "var(--color-muted)" }}
+          onClick={() => requestSwitch("retail")}
+          disabled={busy}
+          aria-pressed={mode === "retail"}
+        >
+          <span>🛍</span>
+          <span>Retail</span>
+        </button>
+
+        <button
+          type="button"
+          className="mode-pill__btn"
+          style={{ color: mode === "restaurant" ? "#fff" : "var(--color-muted)" }}
+          onClick={() => requestSwitch("restaurant")}
+          disabled={busy}
+          aria-pressed={mode === "restaurant"}
+        >
+          <span>🍽</span>
+          <span>Restaurant</span>
+        </button>
       </div>
 
       {confirming && (
@@ -278,6 +297,7 @@ function ModeToggle({ mode, color }: { mode: "retail" | "restaurant"; color?: st
                 ? " Tills open on a floor plan; tables, gratuity, and the Kitchen display turn on."
                 : " Tills go back to the plain product grid; tables, gratuity, and Kitchen stop being used."}
             </p>
+            {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
             <div className="mt-5 flex gap-3">
               <button
                 onClick={() => setConfirming(null)}
@@ -335,3 +355,38 @@ function IconSignOut() { return <svg width="18" height="18" viewBox="0 0 24 24" 
 function IconMenu() { return <svg width="20" height="20" viewBox="0 0 24 24" {...stroke}><path d="M3 6h18M3 12h18M3 18h18" /></svg>; }
 function IconSun() { return <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>; }
 function IconMoon() { return <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z" /></svg>; }
+
+function ThemeSwitch({ dark, onToggle }: { dark: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
+      title={dark ? "Switch to light mode" : "Switch to dark mode"}
+      className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
+        dark
+          ? "bg-slate-700/80 ring-1 ring-white/15 hover:bg-slate-700"
+          : "bg-slate-200 border border-slate-300/80 hover:bg-slate-300/80"
+      }`}
+    >
+      <span className="sr-only">Toggle theme</span>
+      <span
+        className={`pointer-events-none grid h-6 w-6 place-items-center rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ease-in-out ${
+          dark ? "translate-x-5" : "translate-x-0"
+        }`}
+      >
+        {dark ? (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-700">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+          </svg>
+        ) : (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+          </svg>
+        )}
+      </span>
+    </button>
+  );
+}
+

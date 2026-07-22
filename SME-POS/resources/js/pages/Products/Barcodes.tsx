@@ -108,7 +108,7 @@ export default function Barcodes({ products }: Props) {
       </div>
 
       {/* Print sheet */}
-      <div className="mt-8 grid grid-cols-3 gap-3 print:mt-0 print:grid-cols-3 print:gap-2">
+      <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 print:mt-0 print:grid-cols-3 print:gap-2">
         {chosen.flatMap((p) =>
           Array.from({ length: copies }, (_, i) => (
             <Label key={`${p.id}-${i}`} item={p} />

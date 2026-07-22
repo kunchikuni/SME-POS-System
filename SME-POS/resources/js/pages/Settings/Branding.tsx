@@ -55,7 +55,7 @@ export default function BrandingSettings({ branding, tenantDomain }: Props) {
             <p className="mt-1 text-xs text-slate-400">Set at signup — contact support to change it.</p>
           </Field>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Primary colour" error={form.errors.primary}>
               <ColorInput value={form.data.primary} onChange={(v) => form.setData("primary", v)} />
             </Field>

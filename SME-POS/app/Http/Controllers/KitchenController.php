@@ -33,9 +33,14 @@ class KitchenController extends Controller
             ->get()
             ->map(fn (KitchenOrder $o) => [
                 'id'        => $o->id,
+                'ticket_no' => $o->ticket_no,
                 'status'    => $o->status,
                 'placed_at' => $o->placed_at?->toIso8601String(),
                 'table'     => $o->table?->name,
+                // Not a fabricated field: a ticket with no table genuinely is
+                // a counter order — there's no separate "channel" concept,
+                // this is table_id's real meaning.
+                'channel'   => $o->table_id === null ? 'counter' : 'dine_in',
                 'items'     => $o->sale?->lines->map(fn ($l) => [
                     'name' => $l->name,
                     'qty'  => $l->qty,

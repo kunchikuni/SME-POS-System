@@ -39,3 +39,32 @@ export function saveSession(session: DeviceSession): void {
 export function clearSession(): void {
   localStorage.removeItem(KEY);
 }
+
+/**
+ * Updates the stored session's tenant fields (mode, currency, tax rate,
+ * theme) from a fresh /pos/session response, and reports whether anything
+ * actually changed.
+ *
+ * Why this exists: saveSession() was previously only ever called once, at
+ * pairing time, in PairDevice.tsx. Everything reading tenant.mode
+ * (isRestaurant()) or taxRateBps reads that same snapshot forever — an
+ * owner switching Retail/Restaurant, or changing the VAT rate, in the
+ * dashboard had no way to ever reach an already-paired till. See
+ * syncManager.ts, which calls this on every sync cycle.
+ */
+export function mergeTenantInfo(tenant: SessionResponse['tenant']): boolean {
+  const current = getSession();
+  if (current === null) return false;
+
+  const changed =
+    current.tenant.mode !== tenant.mode ||
+    current.tenant.currency !== tenant.currency ||
+    current.tenant.taxRateBps !== tenant.taxRateBps ||
+    JSON.stringify(current.tenant.theme) !== JSON.stringify(tenant.theme);
+
+  if (changed) {
+    saveSession({ ...current, tenant });
+  }
+
+  return changed;
+}

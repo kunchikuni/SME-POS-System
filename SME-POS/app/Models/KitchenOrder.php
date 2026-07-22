@@ -19,7 +19,7 @@ class KitchenOrder extends Model
     use HasUuids, HasFactory, BelongsToTenant, SoftDeletes;
 
     protected $fillable = [
-        'branch_id', 'sale_id', 'table_id', 'status', 'placed_at', 'ready_at',
+        'branch_id', 'sale_id', 'table_id', 'ticket_no', 'status', 'placed_at', 'ready_at',
     ];
 
     protected function casts(): array

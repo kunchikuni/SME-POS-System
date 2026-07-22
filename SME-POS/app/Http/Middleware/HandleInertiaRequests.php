@@ -20,8 +20,9 @@ class HandleInertiaRequests extends Middleware
 
         return array_merge(parent::share($request), [
             'brand' => [
-                'name'    => config('brand.name'),
-                'tagline' => config('brand.tagline'),
+                'name'         => config('brand.name'),
+                'tagline'      => config('brand.tagline'),
+                'tenantDomain' => config('brand.tenant_domain'),
             ],
             'tenant' => $tenant ? [
                 'name'     => $tenant->name,

@@ -1,13 +1,11 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 /*
-  Wivae design tokens. The brand's one bold move is the action blue; every
-  other surface stays quiet so money figures and controls read cleanly on a
-  busy counter. Money uses tabular numerals so digits never jump.
-  Runtime white-label overrides these via CSS variables set from tenant.theme.
+  Wivae design tokens. Consistent across POS and owner dashboard.
 */
 @theme {
-  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 
   --color-brand-50: #eff4ff;
@@ -27,21 +25,23 @@
   /* Overridden per-tenant at runtime for white-label. */
   --brand-primary: var(--color-brand-500);
   --brand-accent: var(--color-positive);
+
+  /* Mode accent tokens */
+  --retail-accent: #7c3aed;
+  --retail-accent-2: #4f46e5;
+  --retail-accent-glow: rgba(124, 58, 237, 0.35);
+
+  --resto-accent: #ea580c;
+  --resto-accent-2: #d97706;
+  --resto-accent-glow: rgba(234, 88, 12, 0.35);
 }
 
-/*
-  Dark mode: Tailwind v4 utilities (bg-surface, text-ink, border-hairline, …)
-  reference these custom properties directly rather than inlining a resolved
-  value, so overriding them under .dark re-themes every surface that already
-  uses the token utilities — no per-component dark: variants needed. The class
-  is applied to <html> and persisted in localStorage (see AppLayout).
-*/
 .dark {
-  --color-ink: #f1f5f9;
+  --color-ink: #f8fafc;
   --color-muted: #94a3b8;
-  --color-hairline: #293548;
+  --color-hairline: rgba(255, 255, 255, 0.08);
   --color-surface: #0f172a;
-  --color-canvas: #0b1220;
+  --color-canvas: #020617;
 }
 
 .dark html,
@@ -60,6 +60,87 @@ html {
   font-feature-settings: "tnum";
 }
 
+/* ── Keyframes ─────────────────────────────────────────────────────────── */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes pop-in {
+  0%   { opacity: 0; transform: scale(0.94); }
+  60%  { transform: scale(1.02); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.anim-slide-up  { animation: slide-up  0.22s cubic-bezier(0.22,1,0.36,1) both; }
+.anim-fade-in   { animation: fade-in   0.18s ease both; }
+.anim-pop-in    { animation: pop-in    0.25s cubic-bezier(0.22,1,0.36,1) both; }
+
+/* ── Glass card ─────────────────────────────────────────────────────────── */
+.glass-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+}
+
+/* ── Mode pill toggle (matches POS ModePill) ──────────────────────────── */
+.mode-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 3px;
+  gap: 0;
+  background: rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.dark .mode-pill {
+  background: rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+.mode-pill__track {
+  position: absolute;
+  inset: 3px;
+  width: calc(50% - 3px);
+  border-radius: 9999px;
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+              background 0.22s ease,
+              box-shadow 0.22s ease;
+}
+.mode-pill__track--retail {
+  background: linear-gradient(135deg, var(--retail-accent), var(--retail-accent-2));
+  box-shadow: 0 0 14px var(--retail-accent-glow);
+  transform: translateX(0);
+}
+.mode-pill__track--resto {
+  background: linear-gradient(135deg, var(--resto-accent), var(--resto-accent-2));
+  box-shadow: 0 0 14px var(--resto-accent-glow);
+  transform: translateX(100%);
+}
+.mode-pill__btn {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.18s ease;
+  white-space: nowrap;
+  border: none;
+  background: transparent;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -68,3 +149,4 @@ html {
     transition-duration: 0.01ms !important;
   }
 }
+

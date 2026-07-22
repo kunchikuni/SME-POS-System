@@ -29,12 +29,12 @@ export default function ProductCreate({ categories }: { categories: Category[] }
       <form onSubmit={submit} className="mt-6 max-w-xl space-y-5">
         <Field label="Name" value={form.data.name} onChange={(v) => form.setData("name", v)} error={form.errors.name} autoFocus />
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="SKU" value={form.data.sku} onChange={(v) => form.setData("sku", v)} error={form.errors.sku} />
           <Field label="Barcode (optional)" value={form.data.barcode} onChange={(v) => form.setData("barcode", v)} error={form.errors.barcode} />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="block">
             <span className="text-sm font-medium">Price (USD)</span>
             <input

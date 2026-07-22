@@ -49,7 +49,7 @@ export default function TasksIndex() {
   return (
     <AppLayout>
       <Head title="Tasks" />
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-slate-900">Tasks</h1>
           <p className="mt-1 text-sm text-slate-500">Store-operations checklist.</p>
@@ -188,7 +188,7 @@ function TaskModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 sm:p-6" onClick={onClose}>
       <form
         onSubmit={submit}
         onClick={(e) => e.stopPropagation()}

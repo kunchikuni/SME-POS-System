@@ -193,10 +193,15 @@ class SyncService
             // the same transaction and only on first apply, so a replayed push
             // never spawns a duplicate ticket.
             if (app(TenantContext::class)->get()->isRestaurant()) {
+                $ticketNo = KitchenOrder::where('branch_id', $branchId)
+                    ->whereDate('placed_at', now()->toDateString())
+                    ->max('ticket_no');
+
                 KitchenOrder::create([
                     'branch_id' => $branchId,
                     'sale_id'   => $saleId,
                     'table_id'  => $data['table_id'] ?? null,
+                    'ticket_no' => ($ticketNo ?? 0) + 1,
                     'status'    => 'new',
                     'placed_at' => $data['occurred_at'],
                 ]);

@@ -52,7 +52,7 @@ export default function AnalyticsIndex() {
     <AppLayout>
       <Head title="Analytics" />
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight text-slate-900">Analytics</h1>
         <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
           {[7, 30, 90].map((d) => (
@@ -101,6 +101,7 @@ export default function AnalyticsIndex() {
           {topProducts.length === 0 ? (
             <Empty />
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-slate-400">
@@ -121,6 +122,7 @@ export default function AnalyticsIndex() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </Panel>
 
@@ -129,6 +131,7 @@ export default function AnalyticsIndex() {
           {deadStock.length === 0 ? (
             <Empty label="Nothing gathering dust — every stocked item sold." />
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-slate-400">
@@ -145,6 +148,7 @@ export default function AnalyticsIndex() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </Panel>
       </div>
@@ -154,6 +158,7 @@ export default function AnalyticsIndex() {
         {branches.length === 0 ? (
           <Empty />
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-slate-400">
@@ -172,6 +177,7 @@ export default function AnalyticsIndex() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Panel>
     </AppLayout>
