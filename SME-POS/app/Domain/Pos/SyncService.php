@@ -4,7 +4,6 @@ namespace App\Domain\Pos;
 
 use App\Domain\Inventory\StockReason;
 use App\Domain\Inventory\StockService;
-use App\Domain\Tenancy\TenantContext;
 use App\Models\Category;
 use App\Models\KitchenOrder;
 use App\Models\Product;
@@ -48,7 +47,9 @@ class SyncService
             'staff'      => User::whereNotNull('pin_hash')
                 ->get(['id', 'name', 'role', 'pin_hash'])
                 ->makeVisible('pin_hash'),
-            // Restaurant floor plan (empty for retail tenants).
+            // Floor plan tables. Synced for every branch regardless of its
+            // mode — harmless if unused, and a retail-mode branch can still
+            // route a specific sale to a table (see route_to_kitchen).
             'tables'     => Table::where('branch_id', $branchId)
                 ->where('is_active', true)
                 ->orderBy('sort')
@@ -137,19 +138,20 @@ class SyncService
 
         DB::transaction(function () use ($data, $saleId, $deviceId, $branchId) {
             $sale = Sale::create([
-                'id'             => $saleId,
-                'branch_id'      => $branchId,
-                'device_id'      => $deviceId,
-                'cashier_id'     => $data['cashier_id'] ?? null,
-                'table_id'       => $data['table_id'] ?? null,
-                'status'         => 'completed',
-                'subtotal_cents' => $data['subtotal_cents'],
-                'tax_cents'      => $data['tax_cents'] ?? 0,
-                'gratuity_cents' => $data['gratuity_cents'] ?? 0,
-                'total_cents'    => $data['total_cents'],
-                'currency'       => $data['currency'] ?? 'USD',
-                'occurred_at'    => $data['occurred_at'],
-                'synced_at'      => now(),
+                'id'               => $saleId,
+                'branch_id'        => $branchId,
+                'device_id'        => $deviceId,
+                'cashier_id'       => $data['cashier_id'] ?? null,
+                'table_id'         => $data['table_id'] ?? null,
+                'route_to_kitchen' => $data['route_to_kitchen'] ?? false,
+                'status'           => 'completed',
+                'subtotal_cents'   => $data['subtotal_cents'],
+                'tax_cents'        => $data['tax_cents'] ?? 0,
+                'gratuity_cents'   => $data['gratuity_cents'] ?? 0,
+                'total_cents'      => $data['total_cents'],
+                'currency'         => $data['currency'] ?? 'USD',
+                'occurred_at'      => $data['occurred_at'],
+                'synced_at'        => now(),
             ]);
 
             foreach ($data['lines'] as $line) {
@@ -189,10 +191,15 @@ class SyncService
                 ]);
             }
 
-            // Restaurant tenants get a kitchen ticket per sale. Created inside
-            // the same transaction and only on first apply, so a replayed push
-            // never spawns a duplicate ticket.
-            if (app(TenantContext::class)->get()->isRestaurant()) {
+            // A kitchen ticket is created whenever THIS sale asked for one —
+            // not based on the tenant's or branch's default mode. The gate
+            // is the sale's own flag, not any mode check. Currently only
+            // RestaurantTill's checkout sets it (defaulting true, with an
+            // explicit "skip kitchen" opt-out) — RetailTill deliberately
+            // doesn't expose a way to route a sale to the kitchen at all.
+            // Created inside the same transaction and only on first apply,
+            // so a replayed push never spawns a duplicate ticket.
+            if (($data['route_to_kitchen'] ?? false) === true) {
                 $ticketNo = KitchenOrder::where('branch_id', $branchId)
                     ->whereDate('placed_at', now()->toDateString())
                     ->max('ticket_no');

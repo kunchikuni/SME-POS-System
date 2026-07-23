@@ -10,9 +10,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
- * A kitchen ticket, derived from a restaurant sale on push. The kitchen display
- * reads these and advances status; the till never pulls them back (operational
- * state, not part of the sync contract). Its lines are the sale's lines.
+ * A kitchen ticket, derived from any sale that explicitly routed to the
+ * kitchen (SyncService §route_to_kitchen) — not tied to a branch's mode. The
+ * kitchen display reads these and advances status; the till never pulls them
+ * back (operational state, not part of the sync contract). Its lines are the
+ * sale's lines.
  */
 class KitchenOrder extends Model
 {
@@ -38,5 +40,10 @@ class KitchenOrder extends Model
     public function table(): BelongsTo
     {
         return $this->belongsTo(Table::class);
+    }
+
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
     }
 }

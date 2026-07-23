@@ -9,16 +9,28 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** A physical location belonging to a tenant. */
+/**
+ * A physical location belonging to a tenant. `mode` (retail | restaurant) is
+ * the authoritative source for what tills at this branch open to and
+ * whether kitchen tickets get created by default — moved here from
+ * Tenant::mode so two branches of the same tenant can genuinely be
+ * different business types, permanently, without a tenant-wide toggle
+ * flipping every location at once. See the 2026_01_13_000002 migration.
+ */
 class Branch extends Model
 {
     use HasUuids, HasFactory, BelongsToTenant;
 
-    protected $fillable = ['tenant_id', 'name', 'address', 'manager_id', 'phone', 'is_active', 'is_default'];
+    protected $fillable = ['tenant_id', 'name', 'address', 'manager_id', 'phone', 'is_active', 'is_default', 'mode'];
 
     protected function casts(): array
     {
         return ['is_default' => 'boolean', 'is_active' => 'boolean'];
+    }
+
+    public function isRestaurant(): bool
+    {
+        return $this->mode === 'restaurant';
     }
 
     public function tenant(): BelongsTo

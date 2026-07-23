@@ -10,12 +10,14 @@ use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeviceController;
+use App\Http\Controllers\EnquiryController;
 use App\Http\Controllers\BarcodeSheetController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\FiscalisationController;
 use App\Http\Controllers\ImportProductsController;
 use App\Http\Controllers\ImportTemplateController;
 use App\Http\Controllers\KitchenController;
+use App\Http\Controllers\MarketingController;
 use App\Http\Controllers\OrdersController;
 use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\Pos\PosController;
@@ -27,7 +29,6 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\TaskController;
-use App\Http\Controllers\TenantModeController;
 use App\Http\Controllers\TransactionsController;
 use App\Http\Middleware\ResolveDevice;
 use App\Http\Middleware\ResolveTenant;
@@ -43,15 +44,12 @@ $rootDomain = config('brand.tenant_domain');
 | Marketing + tenant onboarding. No tenant in context here.
 */
 Route::domain($rootDomain)->group(function () {
-    Route::get('/', fn () => Inertia::render('Marketing/Home'))->name('home');
+    Route::get('/', [MarketingController::class, 'home'])->name('home');
+    Route::post('/enquire', [EnquiryController::class, 'store'])->name('enquire');
 
     Route::get('/register', [RegisteredTenantController::class, 'create'])->name('register');
     Route::post('/register', [RegisteredTenantController::class, 'store']);
 });
-
-// Fallback for local dev server (127.0.0.1 / localhost) when host doesn't match rootDomain
-Route::get('/register', [RegisteredTenantController::class, 'create']);
-Route::post('/register', [RegisteredTenantController::class, 'store']);
 
 /*
 |--------------------------------------------------------------------------
@@ -62,14 +60,11 @@ Route::post('/register', [RegisteredTenantController::class, 'store']);
 */
 Route::domain('{tenant}.' . $rootDomain)
     ->middleware(ResolveTenant::class)
-    ->group(function () use ($rootDomain) {
+    ->group(function () {
 
         // Tenant root: the natural URL to type. Guests bounce to /login via
         // the auth middleware; signed-in staff land on their dashboard.
         Route::get('/', fn () => redirect('/dashboard'));
-
-        // If someone hits /register on a tenant subdomain, redirect to central signup.
-        Route::get('/register', fn () => redirect()->away("//{$rootDomain}/register"));
 
         // Guests: the tenant login screen (ResolveTenant has set context, so
         // authentication is scoped to this subdomain's tenant).
@@ -89,10 +84,10 @@ Route::domain('{tenant}.' . $rootDomain)
             Route::get('/dashboard', [DashboardController::class, 'index'])
                 ->name('dashboard');
 
-            // Retail/restaurant toggle (§1: mode is a tenant setting, not a
-            // fork). Admin-gated in the controller, same pattern as branding.
-            Route::patch('settings/mode', [TenantModeController::class, 'update'])
-                ->name('settings.mode');
+            // Retail/restaurant is now a per-BRANCH setting (Branch::mode),
+            // not a tenant-wide toggle — see BranchController::update() and
+            // the 2026_01_13_000002 migration for why. There is no longer a
+            // single settings/mode endpoint to switch "the" tenant's mode.
 
             // Analytics (Phase 6 · feat/analytics): sales, top products, dead
             // stock, branch performance — read models over the sales ledger.

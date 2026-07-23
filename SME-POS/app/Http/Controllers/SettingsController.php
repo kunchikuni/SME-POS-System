@@ -28,7 +28,6 @@ class SettingsController extends Controller
             'currency'    => $t->currency ?? 'USD',
             'taxRatePercent' => $t->taxRateBasisPoints() / 100,
             'currencies'  => self::CURRENCIES,
-            'mode'        => $t->mode ?? 'retail',
         ]);
     }
 

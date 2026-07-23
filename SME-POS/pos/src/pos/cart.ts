@@ -104,6 +104,15 @@ export function buildSaleMutation(
     currency: string;
     payments: PaymentInput[];
     tableId?: string | null;
+    /**
+     * Whether this specific sale should create a kitchen ticket. Defaults
+     * false — a plain sale never routes to the kitchen unless the till
+     * explicitly asked for it (RetailTill's "send to kitchen" action, or
+     * RestaurantTill's default checkout, which sets this true unless the
+     * cashier picks "quick sale, skip kitchen"). Independent of branch
+     * mode — see SalePayload.route_to_kitchen.
+     */
+    routeToKitchen?: boolean;
     gratuityCents?: number;
     tenantRateBps: number;
   },
@@ -128,6 +137,7 @@ export function buildSaleMutation(
       id: uuid(),
       cashier_id: options.cashierId,
       table_id: options.tableId ?? null,
+      route_to_kitchen: options.routeToKitchen ?? false,
       subtotal_cents: totals.subtotal_cents,
       tax_cents: totals.tax_cents,
       gratuity_cents: gratuity,

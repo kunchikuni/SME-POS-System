@@ -19,8 +19,8 @@ export function PairDevice({ onPaired }: { onPaired: (session: DeviceSession) =>
     saveSession({
       token: token.trim(),
       device: { id: '', name: '' },
-      branch: { id: '', name: '' },
-      tenant: { name: '', theme: {}, mode: 'retail', currency: 'USD', taxRateBps: 0 },
+      branch: { id: '', name: '', mode: 'retail' },
+      tenant: { name: '', theme: {}, currency: 'USD', taxRateBps: 0 },
     });
 
     try {

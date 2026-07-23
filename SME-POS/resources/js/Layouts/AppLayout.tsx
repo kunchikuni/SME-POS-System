@@ -33,6 +33,8 @@ export default function AppLayout({ children }: PropsWithChildren) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  const openTaskCount = tenant?.openTaskCount ?? 0;
+
   const nav: NavItem[] = [
     { label: "Dashboard", href: "/dashboard", icon: <IconGrid />, match: (u) => u === "/" || u.startsWith("/dashboard") },
     { label: "POS", href: "/pos", icon: <IconCart /> },
@@ -42,11 +44,12 @@ export default function AppLayout({ children }: PropsWithChildren) {
     { label: "Reports", href: "/analytics", icon: <IconChart />, match: (u) => u.startsWith("/analytics") },
     { label: "AI Insights", href: "/ai-insights", icon: <IconSparkle />, match: (u) => u.startsWith("/ai-insights") },
     { label: "Staff Management", href: "/staff", icon: <IconUsers />, match: (u) => u.startsWith("/staff") },
-    { label: "Tasks", href: "/tasks", icon: <IconTasks />, match: (u) => u.startsWith("/tasks") },
+    { label: "Tasks", href: "/tasks", icon: <IconTasks />, badge: openTaskCount > 0 ? String(openTaskCount) : undefined, match: (u) => u.startsWith("/tasks") },
     { label: "Branches", href: "/branches", icon: <IconStore />, match: (u) => u.startsWith("/branches") },
-    ...(tenant?.mode === "restaurant"
-      ? [{ label: "Kitchen", href: "/kitchen", icon: <IconChef />, match: (u: string) => u.startsWith("/kitchen") }]
-      : []),
+    // Not gated by mode: mode is per-branch now (see Branches page), and any
+    // branch — retail-default or not — can have sales that explicitly routed
+    // to the kitchen. A tenant with none just sees an empty Kitchen Display.
+    { label: "Kitchen", href: "/kitchen", icon: <IconChef />, match: (u) => u.startsWith("/kitchen") },
     { label: "Fiscalisation", href: "/settings/fiscalisation", icon: <IconChip />, badge: "ADD-ON", match: (u) => u.startsWith("/settings/fiscalisation") },
     { label: "Payments", href: "/settings/payments", icon: <IconCard />, match: (u) => u.startsWith("/settings/payments") },
     { label: "HR & Payroll", href: "/payroll", icon: <IconBriefcase />, match: (u) => u.startsWith("/payroll") },
@@ -125,12 +128,17 @@ export default function AppLayout({ children }: PropsWithChildren) {
                 <span className={`h-1.5 w-1.5 rounded-full ${online ? "bg-positive" : "bg-amber-500"}`} />
                 {online ? "Online" : "Offline"}
               </span>
-
-              {isAdmin && tenant && <ModeToggle mode={tenant.mode} color={primary} />}
             </div>
 
             <div className="flex items-center gap-2">
-              <ThemeSwitch dark={dark} onToggle={toggleDark} />
+              <button
+                onClick={toggleDark}
+                className="rounded-full p-2 text-muted hover:bg-canvas"
+                aria-label="Toggle theme"
+                title="Toggle theme"
+              >
+                {dark ? <IconMoon /> : <IconSun />}
+              </button>
 
               <div className="relative">
                 <button
@@ -220,107 +228,6 @@ function SidebarLink({ item, url, color }: { item: NavItem; url: string; color?:
   );
 }
 
-/** Retail/Restaurant is a real tenant setting (§1) — this actually flips it. */
-function ModeToggle({ mode, color }: { mode: "retail" | "restaurant"; color?: string }) {
-  const [busy, setBusy] = useState(false);
-  const [confirming, setConfirming] = useState<"retail" | "restaurant" | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  function requestSwitch(next: "retail" | "restaurant") {
-    if (next === mode || busy) return;
-    setError(null);
-    setConfirming(next);
-  }
-
-  function apply(next: "retail" | "restaurant") {
-    setBusy(true);
-    setError(null);
-    router.patch(
-      "/settings/mode",
-      { mode: next },
-      {
-        preserveScroll: true,
-        onSuccess: () => setConfirming(null),
-        onError: () => setError("Couldn't switch modes — you may not have permission, or the request failed. Try again."),
-        onFinish: () => setBusy(false),
-      },
-    );
-  }
-
-  return (
-    <>
-      <div className="mode-pill hidden sm:inline-flex" role="group" aria-label="Tenant mode">
-        <div
-          className={`mode-pill__track ${
-            mode === "retail" ? "mode-pill__track--retail" : "mode-pill__track--resto"
-          }`}
-        />
-
-        <button
-          type="button"
-          className="mode-pill__btn"
-          style={{ color: mode === "retail" ? "#fff" : "var(--color-muted)" }}
-          onClick={() => requestSwitch("retail")}
-          disabled={busy}
-          aria-pressed={mode === "retail"}
-        >
-          <span>🛍</span>
-          <span>Retail</span>
-        </button>
-
-        <button
-          type="button"
-          className="mode-pill__btn"
-          style={{ color: mode === "restaurant" ? "#fff" : "var(--color-muted)" }}
-          onClick={() => requestSwitch("restaurant")}
-          disabled={busy}
-          aria-pressed={mode === "restaurant"}
-        >
-          <span>🍽</span>
-          <span>Restaurant</span>
-        </button>
-      </div>
-
-      {confirming && (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-6"
-          onClick={() => setConfirming(null)}
-        >
-          <div
-            className="w-full max-w-sm rounded-2xl bg-surface p-6 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-semibold text-ink">Switch to {confirming}?</h3>
-            <p className="mt-2 text-sm text-muted">
-              This changes what every till shows, for every cashier, on their next sync.
-              {confirming === "restaurant"
-                ? " Tills open on a floor plan; tables, gratuity, and the Kitchen display turn on."
-                : " Tills go back to the plain product grid; tables, gratuity, and Kitchen stop being used."}
-            </p>
-            {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-            <div className="mt-5 flex gap-3">
-              <button
-                onClick={() => setConfirming(null)}
-                className="flex-1 rounded-lg border border-hairline py-2.5 text-sm font-medium text-ink hover:bg-canvas"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => apply(confirming)}
-                disabled={busy}
-                className="flex-1 rounded-lg py-2.5 text-sm font-medium text-white disabled:opacity-50"
-                style={{ background: color ?? "#1d4ed8" }}
-              >
-                {busy ? "Switching…" : `Switch to ${confirming}`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
 function TrialStrip({ endsAt }: { endsAt: string }) {
   const days = Math.max(0, Math.ceil((new Date(endsAt).getTime() - Date.now()) / 86_400_000));
   return (
@@ -355,38 +262,3 @@ function IconSignOut() { return <svg width="18" height="18" viewBox="0 0 24 24" 
 function IconMenu() { return <svg width="20" height="20" viewBox="0 0 24 24" {...stroke}><path d="M3 6h18M3 12h18M3 18h18" /></svg>; }
 function IconSun() { return <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>; }
 function IconMoon() { return <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z" /></svg>; }
-
-function ThemeSwitch({ dark, onToggle }: { dark: boolean; onToggle: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
-      title={dark ? "Switch to light mode" : "Switch to dark mode"}
-      className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
-        dark
-          ? "bg-slate-700/80 ring-1 ring-white/15 hover:bg-slate-700"
-          : "bg-slate-200 border border-slate-300/80 hover:bg-slate-300/80"
-      }`}
-    >
-      <span className="sr-only">Toggle theme</span>
-      <span
-        className={`pointer-events-none grid h-6 w-6 place-items-center rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ease-in-out ${
-          dark ? "translate-x-5" : "translate-x-0"
-        }`}
-      >
-        {dark ? (
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-700">
-            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
-          </svg>
-        ) : (
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500">
-            <circle cx="12" cy="12" r="4" />
-            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-          </svg>
-        )}
-      </span>
-    </button>
-  );
-}
-

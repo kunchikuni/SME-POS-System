@@ -10,6 +10,7 @@ function context(): ReceiptContext {
       id: 's1',
       cashier_id: 'c1',
       table_id: null,
+      route_to_kitchen: false,
       subtotal_cents: 450,
       tax_cents: 0,
       gratuity_cents: 0,

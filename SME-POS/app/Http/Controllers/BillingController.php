@@ -35,6 +35,7 @@ class BillingController extends Controller
             ] : null,
             'plans' => config('paynow.plans'),
             'zimraAddonPrice' => config('paynow.zimra_addon_price'),
+            'hardware' => config('paynow.hardware'),
             'paynowAvailable' => $paynow->isAvailable(),
         ]);
     }

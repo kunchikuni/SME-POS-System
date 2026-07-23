@@ -79,6 +79,10 @@ DB_CONNECTION=sqlite
 # loads fine without these, "Pay with Paynow" will fail until they're set.
 PAYNOW_INTEGRATION_ID=
 PAYNOW_INTEGRATION_KEY=
+
+# Only needed for the Business-tier enquiry notification email — the
+# enquiry itself is saved either way (see config/enquiries.php).
+SALES_EMAIL=
 ```
 
 ## Composer packages this bundle assumes

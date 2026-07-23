@@ -33,6 +33,7 @@ class BranchController extends Controller
                 'phone'         => $b->phone,
                 'is_default'    => $b->is_default,
                 'is_active'     => $b->is_active,
+                'mode'          => $b->mode,
                 'manager'       => $b->manager?->name,
                 'manager_id'    => $b->manager_id,
                 'staff_count'   => $b->staff_count,
@@ -60,6 +61,7 @@ class BranchController extends Controller
             'address'    => ['nullable', 'string', 'max:255'],
             'phone'      => ['nullable', 'string', 'max:30'],
             'manager_id' => ['nullable', 'uuid', 'exists:users,id'],
+            'mode'       => ['nullable', 'in:retail,restaurant'],
         ]);
 
         Branch::create($data);
@@ -81,6 +83,7 @@ class BranchController extends Controller
             'phone'      => ['nullable', 'string', 'max:30'],
             'manager_id' => ['nullable', 'uuid', 'exists:users,id'],
             'is_active'  => ['boolean'],
+            'mode'       => ['nullable', 'in:retail,restaurant'],
         ]);
 
         $model->update($data);

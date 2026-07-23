@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Domain\Tenancy\TenantContext;
+use App\Models\Task;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -25,11 +26,12 @@ class HandleInertiaRequests extends Middleware
                 'tenantDomain' => config('brand.tenant_domain'),
             ],
             'tenant' => $tenant ? [
-                'name'     => $tenant->name,
-                'mode'     => $tenant->mode,
-                'onTrial'  => $tenant->onTrial(),
-                'trialEnd' => $tenant->trial_ends_at?->toIso8601String(),
-                'theme'    => $tenant->theme(),
+                'name'          => $tenant->name,
+                'mode'          => $tenant->mode,
+                'onTrial'       => $tenant->onTrial(),
+                'trialEnd'      => $tenant->trial_ends_at?->toIso8601String(),
+                'theme'         => $tenant->theme(),
+                'openTaskCount' => fn (): int => Task::where('status', 'open')->count(),
             ] : null,
             'auth' => [
                 'user' => optional($request->user(), fn ($u) => [

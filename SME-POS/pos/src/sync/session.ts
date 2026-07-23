@@ -41,29 +41,36 @@ export function clearSession(): void {
 }
 
 /**
- * Updates the stored session's tenant fields (mode, currency, tax rate,
- * theme) from a fresh /pos/session response, and reports whether anything
- * actually changed.
+ * Updates the stored session's tenant fields (currency, tax rate, theme)
+ * AND branch fields (mode) from a fresh /pos/session response, and reports
+ * whether anything actually changed.
  *
  * Why this exists: saveSession() was previously only ever called once, at
- * pairing time, in PairDevice.tsx. Everything reading tenant.mode
+ * pairing time, in PairDevice.tsx. Everything reading branch.mode
  * (isRestaurant()) or taxRateBps reads that same snapshot forever — an
- * owner switching Retail/Restaurant, or changing the VAT rate, in the
+ * owner switching a branch's mode, or changing the VAT rate, in the
  * dashboard had no way to ever reach an already-paired till. See
  * syncManager.ts, which calls this on every sync cycle.
+ *
+ * Named mergeSessionInfo, not mergeTenantInfo — mode moved off tenant onto
+ * branch (two branches of one tenant can be different business types), so
+ * this now merges fields from both objects, not just the tenant's.
  */
-export function mergeTenantInfo(tenant: SessionResponse['tenant']): boolean {
+export function mergeSessionInfo(
+  tenant: SessionResponse['tenant'],
+  branch: SessionResponse['branch'],
+): boolean {
   const current = getSession();
   if (current === null) return false;
 
   const changed =
-    current.tenant.mode !== tenant.mode ||
+    current.branch.mode !== branch.mode ||
     current.tenant.currency !== tenant.currency ||
     current.tenant.taxRateBps !== tenant.taxRateBps ||
     JSON.stringify(current.tenant.theme) !== JSON.stringify(tenant.theme);
 
   if (changed) {
-    saveSession({ ...current, tenant });
+    saveSession({ ...current, tenant, branch: { ...current.branch, mode: branch.mode } });
   }
 
   return changed;

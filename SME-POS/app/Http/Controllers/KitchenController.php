@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Domain\Tenancy\TenantContext;
 use App\Models\KitchenOrder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,21 +12,23 @@ use Inertia\Response;
 /**
  * The kitchen display (KDS). Back-of-house and online-only, so it lives in the
  * dashboard rather than the offline till. It reads the kitchen tickets derived
- * from restaurant sales (SyncService) and advances their status. Tickets are
- * tenant-scoped by the global scope on lookups here — but note that models are
- * resolved explicitly in update(), not via implicit route-model binding; see
- * that method for why.
+ * from sales that explicitly routed to the kitchen (SyncService §route_to_kitchen)
+ * and advances their status. Tickets are tenant-scoped by the global scope on
+ * lookups here — but note that models are resolved explicitly in update(), not
+ * via implicit route-model binding; see that method for why.
  *
- * Restaurant-only: retail tenants have no tickets and this surface is hidden.
+ * Not gated by any branch's mode: even a branch currently set to retail may
+ * have existing tickets from before it was switched, or a restaurant-mode
+ * branch's tickets shouldn't vanish if it's later switched to retail — so
+ * this stays reachable regardless of what any branch defaults to. A tenant
+ * with no routed sales just sees an empty "no open tickets" state.
  */
 class KitchenController extends Controller
 {
-    public function index(TenantContext $tenant): Response
+    public function index(): Response
     {
-        abort_unless($tenant->get()->isRestaurant(), 404);
-
         $orders = KitchenOrder::query()
-            ->with(['sale.lines:id,sale_id,name,qty', 'table:id,name'])
+            ->with(['sale.lines:id,sale_id,name,qty', 'table:id,name', 'branch:id,name'])
             ->where('status', '!=', 'served')
             ->orderBy('placed_at')
             ->get()
@@ -37,6 +38,7 @@ class KitchenController extends Controller
                 'status'    => $o->status,
                 'placed_at' => $o->placed_at?->toIso8601String(),
                 'table'     => $o->table?->name,
+                'branch'    => $o->branch?->name,
                 // Not a fabricated field: a ticket with no table genuinely is
                 // a counter order — there's no separate "channel" concept,
                 // this is table_id's real meaning.
@@ -50,10 +52,8 @@ class KitchenController extends Controller
         return Inertia::render('Kitchen/Index', ['orders' => $orders]);
     }
 
-    public function update(Request $request, TenantContext $tenant, string $kitchenOrder): RedirectResponse
+    public function update(Request $request, string $kitchenOrder): RedirectResponse
     {
-        abort_unless($tenant->get()->isRestaurant(), 404);
-
         // Resolved explicitly, not via implicit binding: route-model binding
         // runs as route middleware, which can execute before ResolveTenant has
         // set the tenant context — the tenant scope then matches nothing and

@@ -13,9 +13,11 @@ import type { TillTask } from '../types/contract';
 export function TasksPanel({
                                cashierId,
                                onClose,
+                               onTasksChanged,
                            }: {
     cashierId: string | null;
     onClose: () => void;
+    onTasksChanged?: () => void;
 }) {
     const [tasks, setTasks] = useState<TillTask[] | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -47,6 +49,7 @@ export function TasksPanel({
         try {
             await api.completeTask(task.id, cashierId);
             setTasks((t) => t?.filter((x) => x.id !== task.id) ?? null);
+            onTasksChanged?.();
         } catch {
             setError('Couldn’t mark that done — check the connection and try again.');
         } finally {

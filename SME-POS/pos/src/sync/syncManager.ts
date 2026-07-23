@@ -1,6 +1,6 @@
 import { api, ApiError, OfflineError } from './apiClient';
 import { ack, markAttempt, pending, pendingCount } from './outbox';
-import { mergeTenantInfo } from './session';
+import { mergeSessionInfo } from './session';
 import { db, getCursor, setCursor } from '../db/database';
 import type { BootstrapResponse, Product, PullResponse, Table } from '../types/contract';
 
@@ -127,15 +127,16 @@ export class SyncManager {
   }
 
   /**
-   * Refreshes the stored tenant mode/currency/tax-rate/theme from the server
-   * on every sync cycle — see session.ts for why this exists. Failure here
-   * (offline, etc.) is swallowed on purpose: it must never abort flush/pull,
-   * which are the operations that actually matter for not losing a sale.
+   * Refreshes the stored branch mode + tenant currency/tax-rate/theme from
+   * the server on every sync cycle — see session.ts for why this exists.
+   * Failure here (offline, etc.) is swallowed on purpose: it must never
+   * abort flush/pull, which are the operations that actually matter for not
+   * losing a sale.
    */
   private async refreshTenantInfo(): Promise<void> {
     try {
-      const { tenant } = await api.session();
-      if (mergeTenantInfo(tenant)) {
+      const { tenant, branch } = await api.session();
+      if (mergeSessionInfo(tenant, branch)) {
         this.emit({ settingsChanged: true });
       }
     } catch {

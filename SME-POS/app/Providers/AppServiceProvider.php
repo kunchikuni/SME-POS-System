@@ -8,6 +8,7 @@ use App\Domain\Tenancy\TenantUserProvider;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Fortify\Fortify;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -16,8 +17,8 @@ class AppServiceProvider extends ServiceProvider
         // Tell Fortify to ignore its built-in routes — tenancy uses custom
         // controllers (RegisteredTenantController, AuthenticatedSessionController)
         // on bare host and subdomain routes (routes/web.php).
-        if (class_exists(\Laravel\Fortify\Fortify::class)) {
-            \Laravel\Fortify\Fortify::ignoreRoutes();
+        if (class_exists(Fortify::class)) {
+            Fortify::ignoreRoutes();
         }
 
         // One tenant per request. `scoped` resets it between requests, which

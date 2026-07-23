@@ -83,11 +83,21 @@ export interface PaymentPayload {
 export interface SalePayload {
   id: string;
   cashier_id: string | null;
-  /** Restaurant only: the table this order belongs to. */
+  /** The table this order belongs to, if any — independent of branch mode. */
   table_id: string | null;
+  /**
+   * Whether THIS sale should create a kitchen ticket. Not inferred from
+   * table_id (a ticket can exist with no table — a "Counter" order) and not
+   * inferred from the branch's mode — the gate is this flag, not a mode
+   * check. Only RestaurantTill's checkout currently sets it (true by
+   * default, with an explicit "skip kitchen" opt-out); RetailTill
+   * deliberately never sends anything but false. This is what
+   * SyncService::applySale() actually gates ticket creation on.
+   */
+  route_to_kitchen: boolean;
   subtotal_cents: number;
   tax_cents: number;
-  /** Restaurant only: tip added at settle. Part of total_cents. */
+  /** Tip added at settle, when routed to the kitchen with gratuity offered. Part of total_cents. */
   gratuity_cents: number;
   total_cents: number;
   currency: string;
@@ -138,8 +148,13 @@ export type TenantMode = 'retail' | 'restaurant';
 
 export interface SessionResponse {
   device: { id: string; name: string };
-  branch: { id: string; name: string };
-  tenant: { name: string; theme: TenantTheme; mode: TenantMode; currency: string; taxRateBps: number };
+  /**
+   * mode lives here, not on tenant — the authoritative source for what a
+   * till at THIS branch opens to. Two branches of the same tenant can be
+   * genuinely different business types; see Branch::mode server-side.
+   */
+  branch: { id: string; name: string; mode: TenantMode };
+  tenant: { name: string; theme: TenantTheme; currency: string; taxRateBps: number };
 }
 
 /** A restaurant floor-plan table. Only populated for restaurant tenants. */

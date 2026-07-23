@@ -1,152 +1,110 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 /*
-  Wivae design tokens. Consistent across POS and owner dashboard.
+  Wivae design tokens. The brand's one bold move is violet — matching the
+  till's retail-accent (#7c3aed) and the Wivae wordmark exactly, so the
+  dashboard and the till read as the same product, not two different ones.
+  Every other surface stays quiet so money figures and controls read cleanly
+  on a busy counter. Money uses tabular numerals so digits never jump.
+  Runtime white-label overrides these via CSS variables set from tenant.theme.
 */
 @theme {
-  --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+    --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 
-  --color-brand-50: #eff4ff;
-  --color-brand-500: #1d4ed8;
-  --color-brand-600: #1a44c0;
-  --color-brand-700: #1736a0;
+    --color-brand-50: #f5f3ff;
+    --color-brand-500: #7c3aed;
+    --color-brand-600: #6d28d9;
+    --color-brand-700: #5b21b6;
 
-  --color-positive: #059669;
-  --color-ink: #0f172a;
-  --color-muted: #64748b;
-  --color-hairline: #e2e8f0;
-  --color-surface: #ffffff;
-  --color-canvas: #f8fafc;
+    --color-positive: #059669;
+    --color-ink: #0f172a;
+    --color-muted: #64748b;
+    --color-hairline: #e2e8f0;
+    --color-surface: #ffffff;
+    --color-canvas: #f8fafc;
 }
 
 :root {
-  /* Overridden per-tenant at runtime for white-label. */
-  --brand-primary: var(--color-brand-500);
-  --brand-accent: var(--color-positive);
-
-  /* Mode accent tokens */
-  --retail-accent: #7c3aed;
-  --retail-accent-2: #4f46e5;
-  --retail-accent-glow: rgba(124, 58, 237, 0.35);
-
-  --resto-accent: #ea580c;
-  --resto-accent-2: #d97706;
-  --resto-accent-glow: rgba(234, 88, 12, 0.35);
+    /* Overridden per-tenant at runtime for white-label. */
+    --brand-primary: var(--color-brand-500);
+    --brand-accent: var(--color-positive);
 }
 
+/*
+  Dark mode: Tailwind v4 utilities (bg-surface, text-ink, border-hairline, …)
+  reference these custom properties directly rather than inlining a resolved
+  value, so overriding them under .dark re-themes every surface that already
+  uses the token utilities — no per-component dark: variants needed. The class
+  is applied to <html> and persisted in localStorage (see AppLayout).
+
+  These values are deliberately the SAME void/violet identity as the till
+  (pos/src/index.css) and the landing page — #0a0612, not a generic slate
+  inversion — so switching to dark mode here feels like the same product,
+  not a different app that happens to share a login page. Cards get a subtle
+  glass treatment (see .glass-surface below) rather than a flat dark fill,
+  matching the till's bg-white/5 pattern.
+
+  This does NOT force dark mode on — see useDarkMode.ts. The till is forced
+  dark because it's a single-purpose glance-and-tap screen; the dashboard is
+  a general productivity tool where an owner doing hours of data work may
+  genuinely prefer light, so the existing "respect system preference"
+  default is left alone. What changed here is what dark mode actually looks
+  like once someone is in it, not when it activates.
+*/
 .dark {
-  --color-ink: #f8fafc;
-  --color-muted: #94a3b8;
-  --color-hairline: rgba(255, 255, 255, 0.08);
-  --color-surface: #0f172a;
-  --color-canvas: #020617;
+    --color-ink: #f5f3ff;
+    --color-muted: #9c92b8;
+    --color-hairline: rgba(255, 255, 255, 0.10);
+    --color-surface: #120b24;
+    --color-canvas: #0a0612;
 }
 
 .dark html,
 html.dark {
-  color-scheme: dark;
+    color-scheme: dark;
+}
+
+/* Glass surface: the dark-mode equivalent of a plain white card. Apply
+   alongside bg-surface (e.g. `bg-surface dark:glass-surface` isn't valid
+   Tailwind syntax for a custom class, so this rule targets bg-surface
+   directly under .dark — any card using the semantic token gets it free). */
+.dark .bg-surface {
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+/* Primary brand buttons get a soft glow in dark mode, matching the till's
+   btn-retail treatment — a flat brand-500 fill reads muddy against a near-
+   black background without it. */
+.dark .bg-brand-500 {
+    box-shadow: 0 4px 20px -4px rgba(124, 58, 237, 0.45);
+}
+
+/* bg-brand-50 is a near-white tint (#f5f3ff) — correct for a light-mode
+   "selected" state (active sidebar link, selected plan card), invisible
+   against a dark surface. Dark mode needs an actual violet tint instead. */
+.dark .bg-brand-50 {
+    background: rgba(124, 58, 237, 0.15);
 }
 
 html {
-  background: var(--color-canvas);
-  color: var(--color-ink);
-  font-family: var(--font-sans);
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
 }
 
 .font-tabular {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-}
-
-/* ── Keyframes ─────────────────────────────────────────────────────────── */
-@keyframes slide-up {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-@keyframes pop-in {
-  0%   { opacity: 0; transform: scale(0.94); }
-  60%  { transform: scale(1.02); }
-  100% { opacity: 1; transform: scale(1); }
-}
-
-.anim-slide-up  { animation: slide-up  0.22s cubic-bezier(0.22,1,0.36,1) both; }
-.anim-fade-in   { animation: fade-in   0.18s ease both; }
-.anim-pop-in    { animation: pop-in    0.25s cubic-bezier(0.22,1,0.36,1) both; }
-
-/* ── Glass card ─────────────────────────────────────────────────────────── */
-.glass-card {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  backdrop-filter: blur(14px) saturate(160%);
-  -webkit-backdrop-filter: blur(14px) saturate(160%);
-}
-
-/* ── Mode pill toggle (matches POS ModePill) ──────────────────────────── */
-.mode-pill {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  border-radius: 9999px;
-  padding: 3px;
-  gap: 0;
-  background: rgba(0, 0, 0, 0.06);
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  transition: background 0.2s ease, border-color 0.2s ease;
-}
-.dark .mode-pill {
-  background: rgba(0, 0, 0, 0.3);
-  border-color: rgba(255, 255, 255, 0.12);
-}
-.mode-pill__track {
-  position: absolute;
-  inset: 3px;
-  width: calc(50% - 3px);
-  border-radius: 9999px;
-  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
-              background 0.22s ease,
-              box-shadow 0.22s ease;
-}
-.mode-pill__track--retail {
-  background: linear-gradient(135deg, var(--retail-accent), var(--retail-accent-2));
-  box-shadow: 0 0 14px var(--retail-accent-glow);
-  transform: translateX(0);
-}
-.mode-pill__track--resto {
-  background: linear-gradient(135deg, var(--resto-accent), var(--resto-accent-2));
-  box-shadow: 0 0 14px var(--resto-accent-glow);
-  transform: translateX(100%);
-}
-.mode-pill__btn {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: color 0.18s ease;
-  white-space: nowrap;
-  border: none;
-  background: transparent;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
 }
-

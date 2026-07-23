@@ -20,7 +20,7 @@ class Sale extends Model
     use HasUuids, HasFactory, BelongsToTenant;
 
     protected $fillable = [
-        'id', 'tenant_id', 'branch_id', 'device_id', 'cashier_id', 'table_id', 'status',
+        'id', 'tenant_id', 'branch_id', 'device_id', 'cashier_id', 'table_id', 'route_to_kitchen', 'status',
         'subtotal_cents', 'tax_cents', 'gratuity_cents', 'total_cents', 'currency',
         'fiscal_status', 'occurred_at', 'synced_at',
     ];
@@ -28,12 +28,13 @@ class Sale extends Model
     protected function casts(): array
     {
         return [
-            'subtotal_cents' => 'integer',
-            'tax_cents'      => 'integer',
-            'gratuity_cents' => 'integer',
-            'total_cents'    => 'integer',
-            'occurred_at'    => 'datetime',
-            'synced_at'      => 'datetime',
+            'subtotal_cents'   => 'integer',
+            'tax_cents'        => 'integer',
+            'gratuity_cents'   => 'integer',
+            'total_cents'      => 'integer',
+            'route_to_kitchen' => 'boolean',
+            'occurred_at'      => 'datetime',
+            'synced_at'        => 'datetime',
         ];
     }
 

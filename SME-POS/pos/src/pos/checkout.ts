@@ -23,6 +23,7 @@ export async function completeSale(
     currency?: string;
     payments: PaymentInput[];
     tableId?: string | null;
+    routeToKitchen?: boolean;
     gratuityCents?: number;
     tenantRateBps: number;
   },
@@ -32,6 +33,7 @@ export async function completeSale(
     currency: options.currency ?? 'USD',
     payments: options.payments,
     tableId: options.tableId ?? null,
+    routeToKitchen: options.routeToKitchen ?? false,
     gratuityCents: options.gratuityCents ?? 0,
     tenantRateBps: options.tenantRateBps,
   });

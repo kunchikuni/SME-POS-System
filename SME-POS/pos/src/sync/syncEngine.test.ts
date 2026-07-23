@@ -233,19 +233,19 @@ describe('syncManager.pull', () => {
 
 /**
  * Regression for "restaurant mode not appearing": saveSession() previously
- * ran only once, at pairing. An owner switching Retail/Restaurant (or
+ * ran only once, at pairing. An owner switching a branch's mode (or
  * changing currency/tax rate) in the dashboard had no way to ever reach an
  * already-paired till — isRestaurant() would read the same stale snapshot
- * forever. sync() now refreshes tenant info on every cycle; these prove the
- * full wiring, not just the pure mergeTenantInfo() function tested in
+ * forever. sync() now refreshes session info on every cycle; these prove the
+ * full wiring, not just the pure mergeSessionInfo() function tested in
  * session.test.ts.
  */
 describe('syncManager.sync — tenant info refresh', () => {
   const session = () => ({
     token: 'demo-token',
     device: { id: 'd1', name: 'Till 1' },
-    branch: { id: 'b1', name: 'Main' },
-    tenant: { name: 'Demo Store', theme: {}, mode: 'retail' as const, currency: 'USD', taxRateBps: 1500 },
+    branch: { id: 'b1', name: 'Main', mode: 'retail' as const },
+    tenant: { name: 'Demo Store', theme: {}, currency: 'USD', taxRateBps: 1500 },
   });
 
   beforeEach(async () => {
@@ -255,16 +255,16 @@ describe('syncManager.sync — tenant info refresh', () => {
     });
   });
 
-  it('updates the stored session when the owner switches to restaurant mode', async () => {
+  it('updates the stored session when the branch switches to restaurant mode', async () => {
     saveSession(session());
     vi.mocked(api.session).mockResolvedValue({
       ...session(),
-      tenant: { ...session().tenant, mode: 'restaurant' },
+      branch: { ...session().branch, mode: 'restaurant' },
     });
 
     await syncManager.sync();
 
-    expect(getSession()?.tenant.mode).toBe('restaurant');
+    expect(getSession()?.branch.mode).toBe('restaurant');
   });
 
   it('leaves the session untouched when nothing changed', async () => {
@@ -273,7 +273,7 @@ describe('syncManager.sync — tenant info refresh', () => {
 
     await syncManager.sync();
 
-    expect(getSession()?.tenant.mode).toBe('retail');
+    expect(getSession()?.branch.mode).toBe('retail');
   });
 
   it('does not let a failed session refresh break the rest of the sync cycle', async () => {
