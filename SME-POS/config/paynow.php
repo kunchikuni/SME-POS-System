@@ -6,19 +6,25 @@
  * labels on sales. Integration ID/Key come from Paynow (developer portal),
  * set per-environment via .env, never committed.
  *
- * PRICING MODEL: software and hardware are deliberately decoupled, not
- * bundled into a single price. The original bundled model (Standard/Pro as
- * a one-time $170/$200 covering hardware + software) didn't survive contact
- * with real hardware cost research — a 10" tablet + Bluetooth printer alone
- * runs $110-190 in landed COGS before Zimbabwe import duty, freight, or any
- * margin, which a one-time $170 charge can't safely absorb. Splitting them:
- *   - `plans` are pure recurring software subscriptions, differentiated by
- *     real capability (branch count, Fiscalisation, Payroll) — no hardware
- *     cost risk baked in, so the margin math stays simple and honest.
- *   - `hardware` bundles are one-time add-ons, priced to actually cover
- *     landed cost + a real margin, purchasable against ANY software tier
- *     (including BYOD, for a customer who wants to buy hardware from Wivae
- *     without a bundle discount forcing them into a specific software tier).
+ * PRICING MODEL: hardware is bundled into Standard and Premium as part of
+ * the RECURRING price — this is a different model from an earlier one that
+ * was deliberately undone, not a reversal of the same mistake. That earlier
+ * model tried to cover hardware cost with a ONE-TIME payment, which fails
+ * the moment a customer churns right after signup — there's no more revenue
+ * coming to make up the loss. A recurring plan that includes hardware
+ * amortizes that cost over the subscription's actual lifetime instead — the
+ * same model phone carriers use for a "free" handset on a contract. Prices
+ * below are raised specifically to reflect this:
+ *   - Standard (+$15/mo over the hardware-free price) recoups a 10" tablet +
+ *     printer's ~$110-190 landed cost within roughly 8-13 months of the
+ *     subscription continuing — not immediately, but safely over time.
+ *   - Premium (+$20/mo) does the same for a 12" tablet + printer's
+ *     ~$140-200 landed cost.
+ * BYOD stays hardware-free and unchanged — "bring your own device" is the
+ * whole point of that tier. The standalone `hardware` bundles below still
+ * exist for a BYOD customer who wants to buy from Wivae anyway, or a
+ * Standard customer who wants the bigger 12" tablet without upgrading to
+ * Premium — not everyone's hardware need maps neatly to their software tier.
  *
  * Hardware prices carry real uncertainty pending confirmed Zimbabwe import
  * duty rates — treat as a working estimate with a buffer built in, not a
@@ -32,27 +38,27 @@ return [
     'plans' => [
         'byod'     => [
             'label'      => 'BYOD',
-            'price'      => 30,
+            'price'      => 29.99,
             'recurring'  => true,
             'branches'   => 1,
             'best_for'   => 'A single counter, testing the waters, or already own a tablet and printer.',
-            'features'   => ['Core POS', 'Inventory', 'Staff management', 'Basic reports'],
+            'features'   => ['Core POS', 'Inventory', 'Staff management', 'Basic reports', 'Offline first', 'Cloud synchronization'],
         ],
         'standard' => [
             'label'      => 'Standard',
-            'price'      => 50,
-            'recurring'  => true,
-            'branches'   => 3,
+            'price'      => 180,
+            'recurring'  => false,
+            'branches'   => 5,
             'best_for'   => 'A growing shop or restaurant running up to a few branches.',
-            'features'   => ['Everything in BYOD', 'AI Insights', 'Task management'],
+            'features'   => ['Everything in BYOD', '10" Android tablet + Bluetooth thermal printer included','Providing intensive before and after implementation training to ensure in-depth system product knowledge and use', 'Configured-Ready to go', 'AI Insights', 'Task management'],
         ],
         'premium'  => [
             'label'      => 'Premium',
-            'price'      => 80,
-            'recurring'  => true,
+            'price'      => 199.9,
+            'recurring'  => false,
             'branches'   => null, // unlimited
             'best_for'   => 'Multiple branches, staff on payroll, and ZIMRA compliance from day one.',
-            'features'   => ['Everything in Standard', 'Payroll & HR', 'Fiscalisation included', 'Priority support'],
+            'features'   => ['Everything in Standard', '12" Android tablet (upgraded)', 'Payroll & HR', 'Fiscalisation included', 'Priority support','Ongoing training to reinforce learning and build proficiency','Implementation planning to ensure the roles of both parties are clearly defined'],
         ],
     ],
 
@@ -61,29 +67,40 @@ return [
     // charging it twice.
     'zimra_addon_price' => 20,
 
+    // Still available standalone — see the docblock above for who this is
+    // actually for now that Standard/Premium include their own tablet.
     'hardware' => [
         'tablet_10' => [
             'label' => '10" Android tablet + Bluetooth thermal printer',
-            'price' => 220,
+            'price' => 120,
         ],
         'tablet_12' => [
             'label' => '12" Android tablet + Bluetooth thermal printer',
-            'price' => 280,
+            'price' => 180,
         ],
     ],
 
     /**
-     * The Business tier — deliberately NOT part of `plans` above. It isn't
-     * a fixed self-serve price: a Windows laptop and professional
-     * installation vary too much (laptop spec, site visit distance, existing
-     * infrastructure) to quote honestly with one number the way BYOD/
-     * Standard/Premium can. This never touches BillingController's Paynow
-     * flow at all — its CTA leads to EnquiryController instead, which stores
-     * a real quote request rather than attempting to charge anything.
+     * Business and Enterprise — deliberately NOT part of `plans` above.
+     * Neither is a fixed self-serve price: Business varies with laptop spec
+     * and install distance; Enterprise is explicitly bespoke (multi-location
+     * chains with custom integration needs). Neither touches
+     * BillingController's Paynow flow — both CTAs lead to EnquiryController
+     * instead, which stores a real quote request rather than attempting to
+     * charge anything. `enquiries.interested_in` records which one a lead
+     * came from.
      */
     'business_tier' => [
-        'label'      => 'Business',
-        'best_for'   => 'Larger operations wanting a full Windows setup and hands-on installation.',
-        'features'   => ['Everything in Premium', 'Windows laptop included', 'Professional on-site installation', 'Dedicated onboarding'],
+        'label'       => 'Business Package',
+        'description' => 'Windows laptop + business POS printer + swipe machine POS terminal + full system access. The complete counter-ready bundle for serious retail operations.',
+        'features'    => ['Windows laptop', 'Implementation planning to ensure the roles of both parties are clearly define', 'Full WivaePOS license', 'Card swipe / POS terminal machine', 'Desktop thermal/impact printer', 'Continuous product upgrades – with consideration of input from our client base and monitoring developments in a fast-evolving retail landscape'],
+    ],
+    'enterprise_tier' => [
+        'label'       => 'Enterprise Package',
+        'description' => 'Custom solution designed for chain stores, franchises, and multi-location businesses. Built to your exact operational requirements.',
+        'features'    => ['Custom device & hardware configuration', 'Dedicated cloud infrastructure'],
     ],
 ];
+
+
+//['Custom device & hardware configuration', 'White-label branding included', 'Custom integrations & API access', 'Dedicated cloud infrastructure', 'Unlimited branches & locations', 'SLA-backed enterprise support'],

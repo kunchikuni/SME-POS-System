@@ -91,8 +91,8 @@ function Nav({ dark, toggleDark }: { dark: boolean; toggleDark: () => void }) {
         <header className="sticky top-0 z-40 border-b border-hairline bg-canvas/85 backdrop-blur-md transition-colors">
             <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
                 <div className="flex items-center gap-2">
-                    <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 p-1.5 text-white shadow-[0_0_16px_rgba(124,58,237,0.5)]">
-                        <IconSpider />
+                    <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 text-sm font-bold text-white shadow-[0_0_16px_rgba(124,58,237,0.5)]">
+                        W
                     </div>
                     <span className="font-display text-lg font-bold tracking-tight">WivaePOS</span>
                 </div>
@@ -362,11 +362,27 @@ function Pricing({
     enterpriseTier: BusinessTierInfo;
     onEnquire: (tier: "business" | "enterprise") => void;
 }) {
+    // Defensive: these come from config('paynow.*') on the server (see
+    // MarketingController). TypeScript trusts the prop types below are
+    // always present, but a stale config cache after adding a new key (a
+    // real, easy-to-hit Laravel gotcha — `php artisan config:cache` freezes
+    // config() reads until cleared) would silently send `undefined` here at
+    // runtime regardless of what the types promise. A missing pricing
+    // section shouldn't take the entire page down with it — nav, hero,
+    // features, FAQ, and footer have nothing to do with this data.
+    if (!plans || !hardware || !businessTier || !enterpriseTier) {
+        return (
+            <section id="pricing" className="border-t border-hairline px-6 py-24 text-center transition-colors">
+                <p className="text-sm text-muted">Pricing is being updated — check back shortly.</p>
+            </section>
+        );
+    }
+
     return (
         <section id="pricing" className="border-t border-hairline px-6 py-24 transition-colors">
             <div className="mx-auto max-w-5xl">
                 <div className="mx-auto max-w-lg text-center">
-                    <h2 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">Simple, honest pricing</h2>
+                    <h2 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">Simple, honest Investment</h2>
                     <p className="mt-3 text-muted">Standard and Premium include their tablet — hardware and software billed together, one clear monthly price.</p>
                 </div>
 
@@ -394,7 +410,7 @@ function Pricing({
                             <h3 className="font-display text-lg font-bold">{p.label}</h3>
                             <div className="mt-3 flex items-baseline gap-1">
                                 <span className="text-4xl font-bold tabular-nums">${p.price}</span>
-                                <span className="text-sm text-muted">/mo</span>
+                                <span className="text-sm text-muted">once off payment</span>
                             </div>
                             <p className="mt-1 text-xs text-muted">
                                 {p.branches === null ? "Unlimited branches" : `Up to ${p.branches} branch${p.branches === 1 ? "" : "es"}`}
@@ -437,7 +453,7 @@ function Pricing({
                         {Object.entries(hardware).map(([key, h]) => (
                             <div key={key} className="rounded-xl border border-hairline p-4 text-left">
                                 <div className="text-sm font-medium">{h.label}</div>
-                                <div className="mt-1 text-xl font-bold text-brand-500">${h.price}</div>
+                                <div className="mt-1 text-xl font-bold text-brand-500">${h.price} + 6 months warrant</div>
                             </div>
                         ))}
                     </div>
@@ -607,8 +623,8 @@ function Footer() {
                 <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
                     <div className="col-span-2 sm:col-span-1">
                         <div className="flex items-center gap-2">
-                            <div className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 p-1 text-white">
-                                <IconSpider />
+                            <div className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 text-xs font-bold text-white">
+                                W
                             </div>
                             <span className="font-display text-base font-bold">WivaePOS</span>
                         </div>
@@ -761,17 +777,6 @@ function Field({ label, error, children }: { label: string; error?: string; chil
 /** The spider mark from the Wivae brand artwork — a simple filled
  * silhouette (body, head, four legs each side), not a literal copy of any
  * reference image, matching the brand's own logo concept. */
-function IconSpider() {
-    return (
-        <svg viewBox="0 0 24 24" fill="currentColor" className="h-full w-full">
-            <ellipse cx="12" cy="13" rx="3.4" ry="4.2" />
-            <circle cx="12" cy="7.2" r="2.2" />
-            <path d="M9 10.5 3 8m6 2.5-5 4.5m5-4.5-4 6.8M15 10.5 21 8m-6 2.5 5 4.5m-5-4.5 4 6.8M9.6 15.5 4.5 19m5.1-3.5-2.6 5.8M14.4 15.5 19.5 19m-5.1-3.5 2.6 5.8"
-                  stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none" />
-        </svg>
-    );
-}
-
 function IconLaptop() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="11" rx="1.5" /><path d="M2 19h20M9 19v-1M15 19v-1" /></svg>; }
 function IconBuilding() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 21V4a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v17M16 21v-9a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v9M4 21h16M8 7h1M8 11h1M8 15h1M12 7h1M12 11h1M12 15h1" /></svg>; }
 function IconCheck() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>; }

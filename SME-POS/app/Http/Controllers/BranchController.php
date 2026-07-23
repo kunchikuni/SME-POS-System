@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Domain\Billing\EntitlementService;
+use App\Domain\Tenancy\TenantContext;
 use App\Models\Branch;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -52,9 +54,17 @@ class BranchController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, TenantContext $tenant, EntitlementService $entitlements): RedirectResponse
     {
         abort_unless($request->user()->can('administer'), 403);
+
+        if (! $entitlements->canAddBranch($tenant->get())) {
+            $limit = $entitlements->branchLimit($tenant->get());
+
+            return back()->withErrors([
+                'name' => "Your plan allows up to {$limit} branch" . ($limit === 1 ? '' : 'es') . '. Upgrade in Settings > Payments to add more.',
+            ]);
+        }
 
         $data = $request->validate([
             'name'       => ['required', 'string', 'max:100'],

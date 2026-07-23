@@ -29,7 +29,10 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\TaskController;
+use App\Http\Controllers\TenantLookupController;
 use App\Http\Controllers\TransactionsController;
+use App\Http\Middleware\EnsureSubscribed;
+use App\Http\Middleware\RequireFeature;
 use App\Http\Middleware\ResolveDevice;
 use App\Http\Middleware\ResolveTenant;
 use Illuminate\Support\Facades\Route;
@@ -46,6 +49,12 @@ $rootDomain = config('brand.tenant_domain');
 Route::domain($rootDomain)->group(function () {
     Route::get('/', [MarketingController::class, 'home'])->name('home');
     Route::post('/enquire', [EnquiryController::class, 'store'])->name('enquire');
+
+    // Backs SignInPrompt's existence check — throttled as a reasonable
+    // precaution against scripted subdomain enumeration.
+    Route::get('/tenant-lookup', [TenantLookupController::class, 'show'])
+        ->middleware('throttle:30,1')
+        ->name('tenant-lookup');
 
     Route::get('/register', [RegisteredTenantController::class, 'create'])->name('register');
     Route::post('/register', [RegisteredTenantController::class, 'store']);
@@ -78,7 +87,7 @@ Route::domain('{tenant}.' . $rootDomain)
         // subscription this is for. CSRF-exempt in bootstrap/app.php.
         Route::post('billing/webhook', [BillingController::class, 'webhook'])->name('billing.webhook');
 
-        Route::middleware('auth')->group(function () {
+        Route::middleware(['auth', EnsureSubscribed::class])->group(function () {
             Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
             Route::get('/dashboard', [DashboardController::class, 'index'])
@@ -143,7 +152,10 @@ Route::domain('{tenant}.' . $rootDomain)
 
             // Rule-based inventory/pricing insights (see AiInsightsService for
             // why these are labeled rule-based rather than AI-generated).
-            Route::get('ai-insights', [AiInsightsController::class, 'index'])->name('ai-insights');
+            // Not on BYOD — see config('paynow.plans').
+            Route::middleware(RequireFeature::class . ':ai insights')->group(function () {
+                Route::get('ai-insights', [AiInsightsController::class, 'index'])->name('ai-insights');
+            });
 
             // Staff management: identity, role, branch, PIN/password. NOT
             // scheduling or payroll — that's a separate, later surface.
@@ -174,14 +186,20 @@ Route::domain('{tenant}.' . $rootDomain)
 
             // ZIMRA Fiscalisation config (Phase 7). Only verifyDevice makes a
             // real external call — see FiscalisationService for what's real.
-            Route::get('settings/fiscalisation', [FiscalisationController::class, 'edit'])
-                ->name('settings.fiscalisation');
-            Route::patch('settings/fiscalisation/toggle', [FiscalisationController::class, 'toggle'])
-                ->name('settings.fiscalisation.toggle');
-            Route::post('settings/fiscalisation/device', [FiscalisationController::class, 'saveDevice'])
-                ->name('settings.fiscalisation.device');
-            Route::post('settings/fiscalisation/verify', [FiscalisationController::class, 'verify'])
-                ->name('settings.fiscalisation.verify');
+            // Premium includes this; BYOD/Standard need the $20/mo add-on
+            // (Subscription::zimra_addon) — see EntitlementService's special
+            // case for 'fiscalisation', since that add-on isn't expressible
+            // as a plain plan feature string the way the others are.
+            Route::middleware(RequireFeature::class . ':fiscalisation')->group(function () {
+                Route::get('settings/fiscalisation', [FiscalisationController::class, 'edit'])
+                    ->name('settings.fiscalisation');
+                Route::patch('settings/fiscalisation/toggle', [FiscalisationController::class, 'toggle'])
+                    ->name('settings.fiscalisation.toggle');
+                Route::post('settings/fiscalisation/device', [FiscalisationController::class, 'saveDevice'])
+                    ->name('settings.fiscalisation.device');
+                Route::post('settings/fiscalisation/verify', [FiscalisationController::class, 'verify'])
+                    ->name('settings.fiscalisation.verify');
+            });
 
             // Wivae's own subscription billing via Paynow (docs §9.1) — never
             // in-store customer payments. Webhook lives outside this group
@@ -191,11 +209,14 @@ Route::domain('{tenant}.' . $rootDomain)
                 ->name('settings.payments.subscribe');
 
             // HR & Payroll (MVP: salary-based — see PayrollService).
-            Route::get('payroll', [PayrollController::class, 'index'])->name('payroll.index');
-            Route::post('payroll/run', [PayrollController::class, 'run'])->name('payroll.run');
-            Route::patch('payroll/staff/{user}/salary', [PayrollController::class, 'setSalary'])
-                ->name('payroll.salary');
-            Route::patch('payroll/nssa', [PayrollController::class, 'setNssa'])->name('payroll.nssa');
+            // Premium only — see config('paynow.plans').
+            Route::middleware(RequireFeature::class . ':payroll')->group(function () {
+                Route::get('payroll', [PayrollController::class, 'index'])->name('payroll.index');
+                Route::post('payroll/run', [PayrollController::class, 'run'])->name('payroll.run');
+                Route::patch('payroll/staff/{user}/salary', [PayrollController::class, 'setSalary'])
+                    ->name('payroll.salary');
+                Route::patch('payroll/nssa', [PayrollController::class, 'setNssa'])->name('payroll.nssa');
+            });
         });
     });
 
