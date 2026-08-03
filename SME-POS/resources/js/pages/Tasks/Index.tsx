@@ -1,283 +1,124 @@
-import { Head, useForm, usePage } from "@inertiajs/react";
+import AppLayout from "../../Layouts/AppLayout.js";
+import { usePageTitle, useQuery, useMutation, useFlash } from "../../lib/hooks.js";
+import { api } from "../../lib/api.js";
 import { useState } from "react";
-import AppLayout from "../../Layouts/AppLayout";
 
-interface StaffOption {
-    id: string;
-    name: string;
-}
-interface Branch {
-    id: string;
-    name: string;
-}
-interface TaskRow {
-    id: string;
-    title: string;
-    notes: string | null;
-    status: "open" | "done";
-    due_at: string | null;
-    completed_at: string | null;
-    assignee: string | null;
-    assigned_to: string | null;
-    creator: string | null;
-    branch: string | null;
-    branch_id: string | null;
-}
-interface Props {
-    tasks: TaskRow[];
-    status: "open" | "done" | "all";
-    staff: StaffOption[];
-    branches: Branch[];
-    [key: string]: unknown;
-}
-
-/**
- * Store-operations checklist. Any dashboard user (Owner/Manager) can complete
- * a task; creating, assigning, and deleting is admin-only. Cashiers/waiters
- * see and complete their tasks from the till instead — a separate, simpler
- * online-first surface, not this page.
- */
 export default function TasksIndex() {
-    const { tasks, status, staff, branches } = usePage<Props>().props;
-    const [showAdd, setShowAdd] = useState(false);
-    const [editing, setEditing] = useState<TaskRow | null>(null);
+  usePageTitle("Tasks");
+  const { flash, showFlash } = useFlash();
+  const { data, loading, refetch } = useQuery(() => api.tasks.list(), []);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ title: "", notes: "", dueAt: "", assignedTo: "" });
 
-    function setFilter(next: string) {
-        window.location.href = `/tasks?status=${next}`;
-    }
+  const tasks = data?.tasks ?? [];
 
-    return (
-        <AppLayout>
-            <Head title="Tasks" />
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <h1 className="text-xl font-semibold tracking-tight text-ink">Tasks</h1>
-                    <p className="mt-1 text-sm text-muted">Store-operations checklist.</p>
-                </div>
-                <button
-                    onClick={() => setShowAdd(true)}
-                    className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600"
-                >
-                    + Add task
-                </button>
-            </div>
+  const { submit: createTask, loading: creating } = useMutation(
+    (d: typeof form) => api.tasks.create(d),
+    { onSuccess: () => { setShowAdd(false); setForm({ title: "", notes: "", dueAt: "", assignedTo: "" }); refetch(); showFlash("Task created."); } }
+  );
+  const { submit: completeTask } = useMutation(
+    (id: string) => api.tasks.complete(id),
+    { onSuccess: () => { refetch(); showFlash("Task completed."); } }
+  );
+  const { submit: deleteTask } = useMutation(
+    (id: string) => api.tasks.delete(id),
+    { onSuccess: () => { refetch(); showFlash("Task deleted."); } }
+  );
 
-            <div className="mt-4 flex gap-1 rounded-lg bg-canvas p-1 w-fit">
-                {(["open", "done", "all"] as const).map((s) => (
-                    <button
-                        key={s}
-                        onClick={() => setFilter(s)}
-                        className={`rounded-md px-3 py-1 text-sm font-medium capitalize ${
-                            status === s ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink"
-                        }`}
-                    >
-                        {s}
-                    </button>
-                ))}
-            </div>
+  const open = tasks.filter((t: any) => t.status === "open");
+  const done = tasks.filter((t: any) => t.status === "done");
 
-            <div className="mt-4 overflow-hidden rounded-xl border border-hairline bg-surface">
-                {tasks.length === 0 ? (
-                    <p className="py-16 text-center text-sm text-muted">Nothing here.</p>
-                ) : (
-                    <ul className="divide-y divide-hairline">
-                        {tasks.map((t) => (
-                            <TaskRowItem key={t.id} task={t} onEdit={() => setEditing(t)} />
-                        ))}
-                    </ul>
-                )}
-            </div>
+  return (
+    <AppLayout>
+      {flash.message && <Flash msg={flash.message} type={flash.type} />}
 
-            {(showAdd || editing) && (
-                <TaskModal
-                    task={editing}
-                    staff={staff}
-                    branches={branches}
-                    onClose={() => {
-                        setShowAdd(false);
-                        setEditing(null);
-                    }}
-                />
-            )}
-        </AppLayout>
-    );
-}
-
-function TaskRowItem({ task, onEdit }: { task: TaskRow; onEdit: () => void }) {
-    const toggleForm = useForm({});
-    const deleteForm = useForm({});
-    const done = task.status === "done";
-
-    const overdue =
-        !done && task.due_at !== null && new Date(task.due_at).getTime() < Date.now();
-
-    return (
-        <li className="flex items-center gap-3 px-4 py-3">
-            <button
-                onClick={() =>
-                    toggleForm.post(`/tasks/${task.id}/${done ? "reopen" : "complete"}`, { preserveScroll: true })
-                }
-                className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 ${
-                    done ? "border-green-500 bg-green-500 text-white" : "border-hairline hover:border-brand-500"
-                }`}
-                aria-label={done ? "Reopen" : "Mark done"}
-            >
-                {done && "✓"}
-            </button>
-
-            <div className="min-w-0 flex-1">
-                <p className={`text-sm font-medium ${done ? "text-muted line-through" : "text-ink"}`}>
-                    {task.title}
-                </p>
-                <p className="text-xs text-muted">
-                    {task.assignee ? `${task.assignee} · ` : "Unassigned · "}
-                    {task.branch ?? "All branches"}
-                    {task.due_at && (
-                        <span className={overdue ? "text-red-500" : ""}>
-              {" "}
-                            · due {new Date(task.due_at).toLocaleDateString()}
-            </span>
-                    )}
-                </p>
-            </div>
-
-            <button onClick={onEdit} className="rounded px-2 py-1 text-xs text-muted hover:bg-canvas">
-                Edit
-            </button>
-            <button
-                onClick={() => {
-                    if (confirm(`Delete "${task.title}"?`)) {
-                        deleteForm.delete(`/tasks/${task.id}`, { preserveScroll: true });
-                    }
-                }}
-                className="rounded px-2 py-1 text-xs text-red-500 hover:bg-red-50"
-            >
-                Delete
-            </button>
-        </li>
-    );
-}
-
-function TaskModal({
-                       task,
-                       staff,
-                       branches,
-                       onClose,
-                   }: {
-    task: TaskRow | null;
-    staff: StaffOption[];
-    branches: Branch[];
-    onClose: () => void;
-}) {
-    const form = useForm({
-        title: task?.title ?? "",
-        notes: task?.notes ?? "",
-        assigned_to: task?.assigned_to ?? "",
-        branch_id: task?.branch_id ?? "",
-        due_at: task?.due_at ? task.due_at.slice(0, 10) : "",
-    });
-
-    function submit(e: React.FormEvent) {
-        e.preventDefault();
-        const onSuccess = () => onClose();
-        if (task) {
-            form.patch(`/tasks/${task.id}`, { preserveScroll: true, onSuccess });
-        } else {
-            form.post("/tasks", { preserveScroll: true, onSuccess });
-        }
-    }
-
-    return (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 sm:p-6" onClick={onClose}>
-            <form
-                onSubmit={submit}
-                onClick={(e) => e.stopPropagation()}
-                className="w-full max-w-sm rounded-2xl bg-surface p-6 shadow-xl"
-            >
-                <h2 className="text-lg font-semibold text-ink">{task ? "Edit task" : "Add task"}</h2>
-
-                <div className="mt-4 space-y-4">
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-ink">Title</label>
-                        <input
-                            value={form.data.title}
-                            onChange={(e) => form.setData("title", e.target.value)}
-                            className="w-full rounded-lg border border-hairline px-3 py-2 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50"
-                            required
-                        />
-                        {form.errors.title && <p className="mt-1 text-sm text-red-600">{form.errors.title}</p>}
-                    </div>
-
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-ink">Notes</label>
-                        <textarea
-                            value={form.data.notes}
-                            onChange={(e) => form.setData("notes", e.target.value)}
-                            rows={2}
-                            className="w-full rounded-lg border border-hairline px-3 py-2 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50"
-                        />
-                    </div>
-
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-ink">Assign to</label>
-                        <select
-                            value={form.data.assigned_to}
-                            onChange={(e) => form.setData("assigned_to", e.target.value)}
-                            className="w-full rounded-lg border border-hairline px-3 py-2 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50"
-                        >
-                            <option value="">— Unassigned —</option>
-                            {staff.map((s) => (
-                                <option key={s.id} value={s.id}>
-                                    {s.name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-ink">Branch</label>
-                        <select
-                            value={form.data.branch_id}
-                            onChange={(e) => form.setData("branch_id", e.target.value)}
-                            className="w-full rounded-lg border border-hairline px-3 py-2 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50"
-                        >
-                            <option value="">— All branches —</option>
-                            {branches.map((b) => (
-                                <option key={b.id} value={b.id}>
-                                    {b.name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-ink">Due date</label>
-                        <input
-                            type="date"
-                            value={form.data.due_at}
-                            onChange={(e) => form.setData("due_at", e.target.value)}
-                            className="w-full rounded-lg border border-hairline px-3 py-2 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50"
-                        />
-                    </div>
-                </div>
-
-                <div className="mt-6 flex gap-3">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="flex-1 rounded-lg border border-hairline py-2.5 text-sm font-medium text-ink hover:bg-canvas"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="submit"
-                        disabled={form.processing}
-                        className="flex-1 rounded-lg bg-brand-500 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
-                    >
-                        {form.processing ? "Saving…" : task ? "Save changes" : "Add task"}
-                    </button>
-                </div>
-            </form>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-ink">Tasks</h1>
+          <p className="mt-1 text-sm text-muted">{open.length} open · {done.length} done</p>
         </div>
-    );
+        <button onClick={() => setShowAdd(true)} className="btn-primary text-sm">+ New Task</button>
+      </div>
+
+      {loading ? <Spinner className="mt-8 mx-auto" /> : (
+        <>
+          <TaskList title="Open" tasks={open} onComplete={completeTask} onDelete={deleteTask} />
+          {done.length > 0 && <TaskList title="Completed" tasks={done} onComplete={() => {}} onDelete={deleteTask} />}
+        </>
+      )}
+
+      {showAdd && (
+        <Modal title="New Task" onClose={() => setShowAdd(false)}>
+          <div className="space-y-3">
+            <Field label="Title" value={form.title} onChange={v => setForm(f => ({ ...f, title: v }))} />
+            <Field label="Notes (optional)" value={form.notes} onChange={v => setForm(f => ({ ...f, notes: v }))} />
+            <Field label="Due date (optional)" type="date" value={form.dueAt} onChange={v => setForm(f => ({ ...f, dueAt: v }))} />
+            <Field label="Assigned to (optional)" value={form.assignedTo} onChange={v => setForm(f => ({ ...f, assignedTo: v }))} />
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <button onClick={() => setShowAdd(false)} className="btn-secondary text-sm">Cancel</button>
+            <button onClick={() => createTask(form)} disabled={creating} className="btn-primary text-sm">{creating ? "Saving…" : "Create"}</button>
+          </div>
+        </Modal>
+      )}
+    </AppLayout>
+  );
+}
+
+function TaskList({ title, tasks, onComplete, onDelete }: { title: string; tasks: any[]; onComplete: (id: string) => void; onDelete: (id: string) => void }) {
+  if (tasks.length === 0) return null;
+  return (
+    <section className="mt-6">
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">{title}</h2>
+      <ul className="space-y-2">
+        {tasks.map((t: any) => (
+          <li key={t.id} className="flex items-center gap-3 rounded-xl border border-hairline bg-surface px-4 py-3">
+            <div className="flex-1">
+              <p className="text-sm font-medium text-ink">{t.title}</p>
+              {t.notes && <p className="text-xs text-muted">{t.notes}</p>}
+              {t.dueAt && <p className="text-xs text-muted">Due {new Date(t.dueAt).toLocaleDateString()}</p>}
+            </div>
+            <div className="flex gap-2">
+              {t.status === "open" && (
+                <button onClick={() => onComplete(t.id)} className="rounded-lg border border-positive/30 px-2 py-1 text-xs text-positive hover:bg-positive/5">Done</button>
+              )}
+              <button onClick={() => { if (confirm("Delete this task?")) onDelete(t.id); }}
+                className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50">Delete</button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function Field({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-muted mb-1">{label}</label>
+      <input type={type} value={value} onChange={e => onChange(e.target.value)}
+        className="w-full rounded-xl border border-hairline px-3 py-2 text-sm" />
+    </div>
+  );
+}
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-sm rounded-2xl border border-hairline bg-surface p-6 shadow-xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-ink">{title}</h3>
+          <button onClick={onClose} className="text-muted hover:text-ink">✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Flash({ msg, type }: { msg: string; type: "success" | "error" }) {
+  return <div className={`mb-4 rounded-xl px-4 py-3 text-sm font-medium ${type === "error" ? "bg-red-50 text-red-700" : "bg-positive/10 text-positive"}`}>{msg}</div>;
+}
+function Spinner({ className = "" }: { className?: string }) {
+  return <span className={`block h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent ${className}`} />;
 }

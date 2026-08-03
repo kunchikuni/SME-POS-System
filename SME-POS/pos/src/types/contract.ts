@@ -16,37 +16,37 @@ export type PaymentMethod = 'cash' | 'ecocash' | 'innbucks' | 'omari' | 'onemone
 // ── Catalog (server-authoritative, flows dashboard → till via pull) ──────────
 
 export interface Category {
-  id: string;
-  name: string;
+    id: string;
+    name: string;
 }
 
 export interface Product {
-  id: string;
-  category_id: string | null;
-  sku: string | null;
-  barcode: string | null;
-  name: string;
-  price_cents: number;
-  currency: string;
-  tax_class: string;
-  type: ProductType;
-  track_stock: boolean;
-  /** Present on pull; bootstrap only ships active products, so we default it true on ingest. */
-  is_active: boolean;
+    id: string;
+    category_id: string | null;
+    sku: string | null;
+    barcode: string | null;
+    name: string;
+    price_cents: number;
+    currency: string;
+    tax_class: string;
+    type: ProductType;
+    track_stock: boolean;
+    /** Present on pull; bootstrap only ships active products, so we default it true on ingest. */
+    is_active: boolean;
 }
 
 /** Cached current stock for this device's branch: SUM(delta) from the ledger. */
 export interface StockLevel {
-  product_id: string;
-  quantity: number;
+    product_id: string;
+    quantity: number;
 }
 
 /** Staff with a PIN, for offline shift login. PIN is attribution, not a security gate. */
 export interface StaffMember {
-  id: string;
-  name: string;
-  role: string;
-  pin_hash: string;
+    id: string;
+    name: string;
+    role: string;
+    pin_hash: string;
 }
 
 /**
@@ -57,54 +57,60 @@ export interface StaffMember {
  * active, so every entry there is implicitly a live StaffMember.
  */
 export interface StaffSyncEntry extends StaffMember {
-  removed: boolean;
+    removed: boolean;
 }
 
 // ── Sale snapshot (till → server; immutable once completed) ──────────────────
 
 export interface SaleLinePayload {
-  id: string;
-  product_id: string | null;
-  name: string;
-  qty: number;
-  unit_price_cents: number;
-  line_total_cents: number;
-  /** Client-minted stock ledger id, so the decrement is idempotent on replay. */
-  movement_id?: string;
+    id: string;
+    product_id: string | null;
+    name: string;
+    qty: number;
+    unit_price_cents: number;
+    line_total_cents: number;
+    /** Client-minted stock ledger id, so the decrement is idempotent on replay. */
+    movement_id?: string;
 }
 
 export interface PaymentPayload {
-  id: string;
-  method: PaymentMethod;
-  amount_cents: number;
-  currency: string;
+    id: string;
+    method: PaymentMethod;
+    amount_cents: number;
+    /** What the customer actually handed over — only meaningfully set for
+     * cash; other tender types are exact by nature. Null/undefined means
+     * "not recorded" (older sales, or a non-cash payment), not "no change
+     * owed" — Receipt.tsx and escpos.ts only show a change line when this is
+     * genuinely present and exceeds amount_cents. */
+    received_cents?: number | null;
+    currency: string;
 }
 
 export interface SalePayload {
-  id: string;
-  cashier_id: string | null;
-  /** The table this order belongs to, if any — independent of branch mode. */
-  table_id: string | null;
-  /**
-   * Whether THIS sale should create a kitchen ticket. Not inferred from
-   * table_id (a ticket can exist with no table — a "Counter" order) and not
-   * inferred from the branch's mode — the gate is this flag, not a mode
-   * check. Only RestaurantTill's checkout currently sets it (true by
-   * default, with an explicit "skip kitchen" opt-out); RetailTill
-   * deliberately never sends anything but false. This is what
-   * SyncService::applySale() actually gates ticket creation on.
-   */
-  route_to_kitchen: boolean;
-  subtotal_cents: number;
-  tax_cents: number;
-  /** Tip added at settle, when routed to the kitchen with gratuity offered. Part of total_cents. */
-  gratuity_cents: number;
-  total_cents: number;
-  currency: string;
-  /** ISO-8601; the real time the sale happened on the device, possibly offline. */
-  occurred_at: string;
-  lines: SaleLinePayload[];
-  payments: PaymentPayload[];
+    id: string;
+    cashier_id: string | null;
+    /** The table this order belongs to, if any — independent of branch mode. */
+    table_id: string | null;
+    /**
+     * Whether THIS sale should create a kitchen ticket. Not inferred from
+     * table_id (a ticket can exist with no table — a "Counter" order) and not
+     * inferred from the branch's mode — the gate is this flag, not a mode
+     * check. Only RestaurantTill's checkout currently sets it (true by
+     * default, with an explicit "skip kitchen" opt-out); RetailTill
+     * deliberately never sends anything but false. This is what
+     * SyncService::applySale() actually gates ticket creation on.
+     */
+    route_to_kitchen: boolean;
+    subtotal_cents: number;
+    tax_cents: number;
+    /** Tip added at settle, when routed to the kitchen with gratuity offered. Part of total_cents. */
+    gratuity_cents: number;
+    total_cents: number;
+    currency: string;
+    /** ISO-8601; the real time the sale happened on the device, possibly offline. */
+    occurred_at: string;
+    lines: SaleLinePayload[];
+    payments: PaymentPayload[];
 }
 
 // ── Mutations (the push envelope) ────────────────────────────────────────────
@@ -112,8 +118,8 @@ export interface SalePayload {
 export type MutationType = 'sale.create';
 
 export interface SaleCreateMutation {
-  type: 'sale.create';
-  sale: SalePayload;
+    type: 'sale.create';
+    sale: SalePayload;
 }
 
 export type Mutation = SaleCreateMutation;
@@ -121,49 +127,61 @@ export type Mutation = SaleCreateMutation;
 // ── Endpoint payloads ────────────────────────────────────────────────────────
 
 export interface BootstrapResponse {
-  cursor: string;
-  categories: Category[];
-  products: Omit<Product, 'is_active'>[];
-  stock: StockLevel[];
-  staff: StaffMember[];
-  tables: Omit<Table, 'is_active'>[];
+    cursor: string;
+    categories: Category[];
+    products: Omit<Product, 'is_active'>[];
+    stock: StockLevel[];
+    staff: StaffMember[];
+    tables: Omit<Table, 'is_active'>[];
 }
 
 export interface PullResponse {
-  cursor: string;
-  categories: Category[];
-  products: Product[];
-  stock: StockLevel[];
-  tables: Table[];
-  staff: StaffSyncEntry[];
+    cursor: string;
+    categories: Category[];
+    products: Product[];
+    stock: StockLevel[];
+    tables: Table[];
+    staff: StaffSyncEntry[];
 }
 
 export interface PushResponse {
-  /** Ids the server has now durably applied — includes replays. */
-  acked: string[];
-  cursor: string;
+    /** Ids the server has now durably applied — includes replays. */
+    acked: string[];
+    cursor: string;
 }
 
 export type TenantMode = 'retail' | 'restaurant';
 
 export interface SessionResponse {
-  device: { id: string; name: string };
-  /**
-   * mode lives here, not on tenant — the authoritative source for what a
-   * till at THIS branch opens to. Two branches of the same tenant can be
-   * genuinely different business types; see Branch::mode server-side.
-   */
-  branch: { id: string; name: string; mode: TenantMode };
-  tenant: { name: string; theme: TenantTheme; currency: string; taxRateBps: number };
+    device: { id: string; name: string };
+    /**
+     * mode lives here, not on tenant — the authoritative source for what a
+     * till at THIS branch opens to. Two branches of the same tenant can be
+     * genuinely different business types; see Branch::mode server-side.
+     */
+    branch: { id: string; name: string; mode: TenantMode; address: string | null; phone: string | null };
+    tenant: {
+        name: string;
+        theme: TenantTheme;
+        currency: string;
+        taxRateBps: number;
+        /**
+         * Only populated once a FiscalDevice exists AND is verified — an
+         * unregistered or unverified device's TIN/VAT shouldn't be printed on a
+         * receipt as if it were live. See Receipt.tsx for how "not configured"
+         * vs "configured but not yet fiscalised" are shown differently.
+         */
+        fiscal: { verified: boolean; taxpayerTin: string | null; vatNumber: string | null };
+    };
 }
 
 /** A restaurant floor-plan table. Only populated for restaurant tenants. */
 export interface Table {
-  id: string;
-  name: string;
-  section: string | null;
-  seats: number;
-  is_active: boolean;
+    id: string;
+    name: string;
+    section: string | null;
+    seats: number;
+    is_active: boolean;
 }
 
 /**
@@ -173,18 +191,18 @@ export interface Table {
  * business risk the way a lost sale is).
  */
 export interface TillTask {
-  id: string;
-  title: string;
-  notes: string | null;
-  due_at: string | null;
-  assignee: string | null;
-  assigned_to: string | null;
+    id: string;
+    title: string;
+    notes: string | null;
+    due_at: string | null;
+    assignee: string | null;
+    assigned_to: string | null;
 }
 
 export interface TillTasksResponse {
-  tasks: TillTask[];
+    tasks: TillTask[];
 }
 
 export interface TenantTheme {
-  [key: string]: unknown;
+    [key: string]: unknown;
 }

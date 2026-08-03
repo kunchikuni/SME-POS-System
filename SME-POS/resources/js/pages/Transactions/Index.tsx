@@ -1,147 +1,60 @@
-import { Head, Link, router, usePage } from "@inertiajs/react";
-import AppLayout from "../../Layouts/AppLayout";
+import AppLayout from "../../Layouts/AppLayout.js";
+import { usePageTitle, useQuery } from "../../lib/hooks.js";
+const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
-interface MethodTotal {
-    method: string;
-    count: number;
-    total_cents: number;
-}
-interface LedgerRow {
-    id: string;
-    method: string;
-    amount_cents: number;
-    currency: string;
-    occurred_at: string | null;
-    cashier: string;
-    sale_id: string;
-}
-interface PaginatedLedger {
-    data: LedgerRow[];
-    links: { url: string | null; label: string; active: boolean }[];
-    last_page: number;
-}
-interface Props {
-    byMethod: MethodTotal[];
-    ledger: PaginatedLedger;
-    days: number;
-    [key: string]: unknown;
-}
-
-const money = (cents: number, currency = "USD") => `${currency === "USD" ? "$" : currency + " "}${(cents / 100).toFixed(2)}`;
-
-function setPeriod(days: number) {
-    router.get("/transactions", { days }, { preserveScroll: true });
-}
-
-/**
- * The financial ledger: how the money came in, by tender method. Distinct
- * from Orders (which answers what was sold and by whom) — this is a payments
- * view. Every payment is a label the merchant recorded, never money Wivae
- * processed (docs §1, §9.1).
- */
 export default function TransactionsIndex() {
-    const { byMethod, ledger, days } = usePage<Props>().props;
-    const grandTotal = byMethod.reduce((sum, m) => sum + m.total_cents, 0);
+  usePageTitle("Transactions");
+  const { data, loading } = useQuery(
+    () => fetch('/transactions', { credentials: 'include', headers: { Accept: 'application/json' } }).then(r => r.json()),
+    []
+  );
+  const payments = data?.payments ?? [];
+  const summary = (data?.summary ?? []) as { method: string; _sum: { amountCents: number }; _count: number }[];
 
-    return (
-        <AppLayout>
-            <Head title="Transactions" />
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <h1 className="text-xl font-semibold tracking-tight text-ink">Transactions</h1>
-                    <p className="mt-1 text-sm text-muted">How payment came in, by method.</p>
-                </div>
-                <div className="flex gap-1 rounded-lg bg-canvas p-1">
-                    {[1, 7, 30].map((d) => (
-                        <button
-                            key={d}
-                            onClick={() => setPeriod(d)}
-                            className={`rounded-md px-3 py-1 text-sm font-medium ${
-                                days === d ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink"
-                            }`}
-                        >
-                            {d === 1 ? "Today" : `${d}d`}
-                        </button>
-                    ))}
-                </div>
+  return (
+    <AppLayout>
+      <h1 className="text-xl font-semibold tracking-tight text-ink">Transactions</h1>
+      <p className="mt-1 text-sm text-muted">Payments ledger</p>
+
+      {/* Method summary */}
+      {summary.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-3">
+          {summary.map((s: any) => (
+            <div key={s.method} className="rounded-xl border border-hairline bg-surface px-4 py-3 text-sm">
+              <p className="capitalize font-medium text-ink">{s.method}</p>
+              <p className="text-lg font-semibold tabular-nums">{money(s._sum?.amountCents ?? 0)}</p>
+              <p className="text-xs text-muted">{s._count} txns</p>
             </div>
+          ))}
+        </div>
+      )}
 
-            {byMethod.length === 0 ? (
-                <p className="mt-6 rounded-xl border border-hairline bg-surface py-16 text-center text-sm text-muted">
-                    No transactions in this period yet.
-                </p>
-            ) : (
-                <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-                    {byMethod.map((m) => (
-                        <div key={m.method} className="rounded-xl border border-hairline bg-surface p-4">
-                            <div className="text-xs font-medium capitalize text-muted">{m.method}</div>
-                            <div className="mt-1 text-lg font-semibold tabular-nums text-ink">
-                                {money(m.total_cents)}
-                            </div>
-                            <div className="text-xs text-muted">
-                                {m.count} txn{m.count === 1 ? "" : "s"} ·{" "}
-                                {grandTotal > 0 ? Math.round((m.total_cents / grandTotal) * 100) : 0}%
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            <div className="mt-6 overflow-hidden rounded-xl border border-hairline bg-surface">
-                {ledger.data.length === 0 ? (
-                    <p className="py-16 text-center text-sm text-muted">Nothing to show.</p>
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-canvas text-left text-xs text-muted">
-                            <tr>
-                                <th className="px-4 py-3 font-medium">Time</th>
-                                <th className="px-4 py-3 font-medium">Method</th>
-                                <th className="px-4 py-3 font-medium">Cashier</th>
-                                <th className="px-4 py-3 text-right font-medium">Amount</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {ledger.data.map((p) => (
-                                <tr key={p.id} className="border-t border-hairline">
-                                    <td className="px-4 py-3 text-muted">
-                                        {p.occurred_at
-                                            ? new Date(p.occurred_at).toLocaleString(undefined, {
-                                                month: "short",
-                                                day: "numeric",
-                                                hour: "2-digit",
-                                                minute: "2-digit",
-                                            })
-                                            : "—"}
-                                    </td>
-                                    <td className="px-4 py-3 capitalize text-ink">{p.method}</td>
-                                    <td className="px-4 py-3 text-muted">{p.cashier}</td>
-                                    <td className="px-4 py-3 text-right font-medium tabular-nums text-ink">
-                                        {money(p.amount_cents, p.currency)}
-                                    </td>
-                                </tr>
-                            ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
-
-            {ledger.last_page > 1 && (
-                <div className="mt-4 flex justify-center gap-1">
-                    {ledger.links.map((l, i) => (
-                        <Link
-                            key={i}
-                            href={l.url ?? "#"}
-                            preserveScroll
-                            className={`rounded-lg px-3 py-1.5 text-sm ${
-                                l.active ? "bg-brand-500 text-white" : "text-muted hover:bg-canvas"
-                            } ${!l.url ? "pointer-events-none opacity-40" : ""}`}
-                            dangerouslySetInnerHTML={{ __html: l.label }}
-                        />
-                    ))}
-                </div>
-            )}
-        </AppLayout>
-    );
+      {loading ? <div className="mt-8 flex justify-center"><Spinner /></div> : (
+        <div className="mt-4 overflow-x-auto rounded-xl border border-hairline">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-hairline bg-canvas text-left text-xs font-semibold uppercase tracking-widest text-muted">
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Method</th>
+                <th className="px-4 py-3">Branch</th>
+                <th className="px-4 py-3 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-hairline">
+              {payments.length === 0 && <tr><td colSpan={4} className="px-4 py-8 text-center text-muted">No transactions yet.</td></tr>}
+              {payments.map((p: any) => (
+                <tr key={p.id} className="hover:bg-canvas/50">
+                  <td className="px-4 py-3 text-muted">{new Date(p.sale?.occurredAt).toLocaleString()}</td>
+                  <td className="px-4 py-3 capitalize text-ink">{p.method}</td>
+                  <td className="px-4 py-3 text-muted">{p.sale?.branch?.name ?? "—"}</td>
+                  <td className="px-4 py-3 text-right tabular-nums font-semibold">{money(p.amountCents ?? 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </AppLayout>
+  );
 }
+function Spinner() { return <span className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />; }

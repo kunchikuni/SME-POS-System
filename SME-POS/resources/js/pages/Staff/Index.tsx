@@ -1,300 +1,188 @@
-import { Head, useForm, usePage } from "@inertiajs/react";
 import { useState } from "react";
-import AppLayout from "../../Layouts/AppLayout";
-
-interface Branch {
-    id: string;
-    name: string;
-}
-interface RoleOption {
-    value: string;
-    label: string;
-}
-interface StaffMember {
-    id: string;
-    name: string;
-    email: string | null;
-    role: string;
-    branch: string | null;
-    branch_id: string | null;
-    has_pin: boolean;
-    dashboard: boolean;
-}
-interface Credential {
-    name: string;
-    kind: "pin" | "password";
-    value: string;
-}
-interface Props {
-    staff: StaffMember[];
-    branches: Branch[];
-    roles: RoleOption[];
-    flash?: { staffCredential?: Credential | null };
-    [key: string]: unknown;
-}
+import AppLayout from "../../Layouts/AppLayout.js";
+import { usePageTitle, useQuery, useMutation, useFlash } from "../../lib/hooks.js";
+import { api, type StaffMember } from "../../lib/api.js";
 
 const ROLE_TINT: Record<string, string> = {
-    owner: "bg-purple-50 text-purple-700",
-    manager: "bg-blue-50 text-blue-700",
-    cashier: "bg-green-50 text-green-700",
-    waiter: "bg-amber-50 text-amber-700",
+  owner: "bg-purple-50 text-purple-700",
+  manager: "bg-blue-50 text-blue-700",
+  cashier: "bg-green-50 text-green-700",
+  waiter: "bg-amber-50 text-amber-700",
 };
+const ROLES = ["owner", "manager", "cashier", "waiter"];
 
-/**
- * Staff identity, role, branch, and till access. Owner/Manager get a
- * dashboard password; Cashier/Waiter are till-only (name, role, branch, PIN —
- * no email, no password, can't sign into the dashboard at all).
- */
 export default function StaffIndex() {
-    const { staff, branches, roles, flash } = usePage<Props>().props;
-    const credential = flash?.staffCredential ?? null;
-    const [showAdd, setShowAdd] = useState(false);
-    const [editing, setEditing] = useState<StaffMember | null>(null);
+  usePageTitle("Staff");
+  const { flash, showFlash } = useFlash();
+  const { data, loading, refetch } = useQuery(() => api.staff.list(), []);
+  const [showAdd, setShowAdd] = useState(false);
+  const [credential, setCredential] = useState<{ name: string; kind: string; value: string } | null>(null);
+  const [form, setForm] = useState({ name: "", role: "cashier", email: "", branchId: "", password: "" });
 
-    return (
-        <AppLayout>
-            <Head title="Staff" />
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <h1 className="text-xl font-semibold tracking-tight text-ink">Staff</h1>
-                    <p className="mt-1 text-sm text-muted">
-                        Identity, role, and till access — not scheduling or payroll.
-                    </p>
-                </div>
-                <button
-                    onClick={() => setShowAdd(true)}
-                    className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600"
-                >
-                    + Add staff
-                </button>
-            </div>
+  const staff = data?.staff ?? [];
+  const branches = data?.branches ?? [];
 
-            {credential && <CredentialReveal credential={credential} />}
-
-            <div className="mt-6 overflow-hidden rounded-xl border border-hairline bg-surface">
-                {staff.length === 0 ? (
-                    <p className="py-16 text-center text-sm text-muted">No staff yet.</p>
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-canvas text-left text-xs text-muted">
-                            <tr>
-                                <th className="px-4 py-3 font-medium">Name</th>
-                                <th className="px-4 py-3 font-medium">Role</th>
-                                <th className="px-4 py-3 font-medium">Branch</th>
-                                <th className="px-4 py-3 font-medium">Access</th>
-                                <th className="px-4 py-3 text-right font-medium">Actions</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {staff.map((s) => (
-                                <StaffRow key={s.id} member={s} onEdit={() => setEditing(s)} />
-                            ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
-
-            {(showAdd || editing) && (
-                <StaffModal
-                    member={editing}
-                    branches={branches}
-                    roles={roles}
-                    onClose={() => {
-                        setShowAdd(false);
-                        setEditing(null);
-                    }}
-                />
-            )}
-        </AppLayout>
-    );
-}
-
-function StaffRow({ member, onEdit }: { member: StaffMember; onEdit: () => void }) {
-    const resetPinForm = useForm({});
-    const resetPasswordForm = useForm({});
-    const deactivateForm = useForm({});
-
-    return (
-        <tr className="border-t border-hairline">
-            <td className="px-4 py-3 font-medium text-ink">{member.name}</td>
-            <td className="px-4 py-3">
-        <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${ROLE_TINT[member.role] ?? "bg-canvas text-muted"}`}>
-          {member.role}
-        </span>
-            </td>
-            <td className="px-4 py-3 text-muted">{member.branch ?? "—"}</td>
-            <td className="px-4 py-3 text-muted">
-                {member.dashboard ? "Dashboard + till" : "Till only"}
-            </td>
-            <td className="px-4 py-3">
-                <div className="flex justify-end gap-1 text-xs">
-                    <button onClick={onEdit} className="rounded px-2 py-1 text-muted hover:bg-canvas">
-                        Edit
-                    </button>
-                    <button
-                        onClick={() => resetPinForm.post(`/staff/${member.id}/reset-pin`, { preserveScroll: true })}
-                        className="rounded px-2 py-1 text-muted hover:bg-canvas"
-                    >
-                        Reset PIN
-                    </button>
-                    {member.dashboard && (
-                        <button
-                            onClick={() => resetPasswordForm.post(`/staff/${member.id}/reset-password`, { preserveScroll: true })}
-                            className="rounded px-2 py-1 text-muted hover:bg-canvas"
-                        >
-                            Reset password
-                        </button>
-                    )}
-                    {member.role !== "owner" && (
-                        <button
-                            onClick={() => {
-                                if (confirm(`Deactivate ${member.name}? They'll lose access immediately.`)) {
-                                    deactivateForm.delete(`/staff/${member.id}`, { preserveScroll: true });
-                                }
-                            }}
-                            className="rounded px-2 py-1 text-red-600 hover:bg-red-50"
-                        >
-                            Deactivate
-                        </button>
-                    )}
-                </div>
-            </td>
-        </tr>
-    );
-}
-
-function CredentialReveal({ credential }: { credential: Credential }) {
-    return (
-        <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
-            <p className="text-sm text-amber-800">
-                {credential.kind === "pin" ? "Till PIN" : "Temporary password"} for{" "}
-                <span className="font-medium">{credential.name}</span> — copy this now, it won't be shown again.
-            </p>
-            <p className="mt-2 font-mono text-lg font-semibold text-amber-900">{credential.value}</p>
-        </div>
-    );
-}
-
-function StaffModal({
-                        member,
-                        branches,
-                        roles,
-                        onClose,
-                    }: {
-    member: StaffMember | null;
-    branches: Branch[];
-    roles: RoleOption[];
-    onClose: () => void;
-}) {
-    const form = useForm({
-        name: member?.name ?? "",
-        role: member?.role ?? "cashier",
-        branch_id: member?.branch_id ?? "",
-        email: member?.email ?? "",
-    });
-
-    const needsEmail = ["owner", "manager"].includes(form.data.role);
-
-    function submit(e: React.FormEvent) {
-        e.preventDefault();
-        const onSuccess = () => onClose();
-        if (member) {
-            form.patch(`/staff/${member.id}`, { preserveScroll: true, onSuccess });
-        } else {
-            form.post("/staff", { preserveScroll: true, onSuccess });
-        }
+  const { submit: createStaff, loading: creating, errors, error } = useMutation(
+    (d: typeof form) => api.staff.create(d),
+    {
+      onSuccess: (r) => {
+        if (r?.staffCredential) setCredential(r.staffCredential);
+        setShowAdd(false);
+        setForm({ name: "", role: "cashier", email: "", branchId: "", password: "" });
+        refetch();
+        showFlash(`${form.name} added.`);
+      },
     }
+  );
 
-    return (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 sm:p-6" onClick={onClose}>
-            <form
-                onSubmit={submit}
-                onClick={(e) => e.stopPropagation()}
-                className="w-full max-w-sm rounded-2xl bg-surface p-6 shadow-xl"
-            >
-                <h2 className="text-lg font-semibold text-ink">{member ? "Edit staff" : "Add staff"}</h2>
+  const { submit: deleteStaff } = useMutation(
+    (id: string) => api.staff.delete(id),
+    { onSuccess: () => { showFlash("Staff member removed."); refetch(); } }
+  );
 
-                <div className="mt-4 space-y-4">
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-ink">Name</label>
-                        <input
-                            value={form.data.name}
-                            onChange={(e) => form.setData("name", e.target.value)}
-                            className="w-full rounded-lg border border-hairline px-3 py-2 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50"
-                            required
-                        />
-                        {form.errors.name && <p className="mt-1 text-sm text-red-600">{form.errors.name}</p>}
-                    </div>
+  const { submit: resetPin } = useMutation(
+    (id: string) => api.staff.resetPin(id),
+    { onSuccess: (r) => { if (r?.staffCredential) setCredential(r.staffCredential); } }
+  );
 
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-ink">Role</label>
-                        <select
-                            value={form.data.role}
-                            onChange={(e) => form.setData("role", e.target.value)}
-                            className="w-full rounded-lg border border-hairline px-3 py-2 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50"
-                        >
-                            {roles.map((r) => (
-                                <option key={r.value} value={r.value}>
-                                    {r.label}
-                                </option>
-                            ))}
-                        </select>
-                        <p className="mt-1 text-xs text-muted">
-                            {needsEmail
-                                ? "Owners and managers get a dashboard login (email + a one-time temporary password)."
-                                : "Cashiers and waiters are till-only — a PIN, no dashboard access."}
-                        </p>
-                    </div>
+  const isDashboardRole = ["owner", "manager"].includes(form.role);
 
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-ink">Branch</label>
-                        <select
-                            value={form.data.branch_id}
-                            onChange={(e) => form.setData("branch_id", e.target.value)}
-                            className="w-full rounded-lg border border-hairline px-3 py-2 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50"
-                        >
-                            <option value="">— None —</option>
-                            {branches.map((b) => (
-                                <option key={b.id} value={b.id}>
-                                    {b.name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+  return (
+    <AppLayout>
+      {flash.message && <Flash message={flash.message} type={flash.type} />}
 
-                    {needsEmail && (
-                        <div>
-                            <label className="mb-1 block text-sm font-medium text-ink">Email</label>
-                            <input
-                                type="email"
-                                value={form.data.email}
-                                onChange={(e) => form.setData("email", e.target.value)}
-                                className="w-full rounded-lg border border-hairline px-3 py-2 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50"
-                            />
-                            {form.errors.email && <p className="mt-1 text-sm text-red-600">{form.errors.email}</p>}
-                        </div>
-                    )}
-                </div>
-
-                <div className="mt-6 flex gap-3">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="flex-1 rounded-lg border border-hairline py-2.5 text-sm font-medium text-ink hover:bg-canvas"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="submit"
-                        disabled={form.processing}
-                        className="flex-1 rounded-lg bg-brand-500 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
-                    >
-                        {form.processing ? "Saving…" : member ? "Save changes" : "Add staff"}
-                    </button>
-                </div>
-            </form>
+      {credential && (
+        <div className="mb-4 rounded-xl border border-positive/30 bg-positive/5 p-4">
+          <p className="text-sm font-semibold text-positive">
+            {credential.name}'s {credential.kind}: <span className="font-mono text-ink">{credential.value}</span>
+          </p>
+          <p className="mt-1 text-xs text-muted">Save this now — it won't be shown again.</p>
+          <button onClick={() => setCredential(null)} className="mt-2 text-xs text-muted hover:text-ink">Dismiss</button>
         </div>
-    );
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-ink">Staff</h1>
+          <p className="mt-1 text-sm text-muted">Manage your team, roles, and access</p>
+        </div>
+        <button onClick={() => setShowAdd(true)} className="btn-primary text-sm">+ Add Staff</button>
+      </div>
+
+      {loading ? (
+        <div className="mt-8 flex justify-center"><Spinner /></div>
+      ) : (
+        <div className="mt-4 overflow-x-auto rounded-xl border border-hairline">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-hairline bg-canvas text-left text-xs font-semibold uppercase tracking-widest text-muted">
+                <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Role</th>
+                <th className="px-4 py-3">Branch</th>
+                <th className="px-4 py-3">Access</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-hairline">
+              {staff.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-muted">No staff yet.</td></tr>}
+              {staff.map((s: StaffMember) => (
+                <tr key={s.id} className="hover:bg-canvas/50">
+                  <td className="px-4 py-3 font-medium text-ink">{s.name}</td>
+                  <td className="px-4 py-3">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${ROLE_TINT[s.role] ?? ""}`}>{s.role}</span>
+                  </td>
+                  <td className="px-4 py-3 text-muted">{s.branch ?? "—"}</td>
+                  <td className="px-4 py-3 text-muted">{s.dashboard ? "Dashboard + Till" : "Till only"}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-2">
+                      {s.hasPin && (
+                        <button onClick={() => resetPin(s.id)} className="rounded-lg border border-hairline px-2 py-1 text-xs hover:bg-canvas">Reset PIN</button>
+                      )}
+                      <button onClick={() => { if (confirm(`Remove ${s.name}?`)) deleteStaff(s.id); }}
+                        className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50">Remove</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showAdd && (
+        <Modal title="Add Staff Member" onClose={() => setShowAdd(false)}>
+          {error && <p className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>}
+          <div className="space-y-3">
+            <Field label="Full name" value={form.name} onChange={(v) => setForm(f => ({ ...f, name: v }))} error={errors.name} />
+            <div>
+              <label className="block text-xs font-semibold text-muted mb-1">Role</label>
+              <select value={form.role} onChange={(e) => setForm(f => ({ ...f, role: e.target.value }))}
+                className="w-full rounded-xl border border-hairline px-3 py-2 text-sm">
+                {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            {branches.length > 0 && (
+              <div>
+                <label className="block text-xs font-semibold text-muted mb-1">Branch</label>
+                <select value={form.branchId} onChange={(e) => setForm(f => ({ ...f, branchId: e.target.value }))}
+                  className="w-full rounded-xl border border-hairline px-3 py-2 text-sm">
+                  <option value="">— Any branch —</option>
+                  {branches.map((b: { id: string; name: string }) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+            )}
+            {isDashboardRole && (
+              <>
+                <Field label="Email" type="email" value={form.email} onChange={(v) => setForm(f => ({ ...f, email: v }))} error={errors.email} />
+                <Field label="Password" type="password" value={form.password} onChange={(v) => setForm(f => ({ ...f, password: v }))} error={errors.password} />
+              </>
+            )}
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <button onClick={() => setShowAdd(false)} className="btn-secondary text-sm">Cancel</button>
+            <button onClick={() => createStaff(form)} disabled={creating} className="btn-primary text-sm">
+              {creating ? "Adding…" : "Add Staff"}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </AppLayout>
+  );
+}
+
+function Field({ label, value, onChange, error, type = "text" }: { label: string; value: string; onChange: (v: string) => void; error?: string; type?: string }) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-muted mb-1">{label}</label>
+      <input type={type} value={value} onChange={e => onChange(e.target.value)}
+        className="w-full rounded-xl border border-hairline px-3 py-2 text-sm" />
+      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-sm rounded-2xl border border-hairline bg-surface p-6 shadow-xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-ink">{title}</h3>
+          <button onClick={onClose} className="text-muted hover:text-ink">✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Flash({ message, type }: { message: string; type: "success" | "error" }) {
+  return (
+    <div className={`mb-4 rounded-xl px-4 py-3 text-sm font-medium ${type === "error" ? "bg-red-50 text-red-700" : "bg-positive/10 text-positive"}`}>
+      {message}
+    </div>
+  );
+}
+
+function Spinner() {
+  return <span className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />;
 }

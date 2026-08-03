@@ -19,8 +19,11 @@ export function PairDevice({ onPaired }: { onPaired: (session: DeviceSession) =>
     saveSession({
       token: token.trim(),
       device: { id: '', name: '' },
-      branch: { id: '', name: '', mode: 'retail' },
-      tenant: { name: '', theme: {}, currency: 'USD', taxRateBps: 0 },
+      branch: { id: '', name: '', mode: 'retail', address: null, phone: null },
+      tenant: {
+        name: '', theme: {}, currency: 'USD', taxRateBps: 0,
+        fiscal: { verified: false, taxpayerTin: null, vatNumber: null },
+      },
     });
 
     try {

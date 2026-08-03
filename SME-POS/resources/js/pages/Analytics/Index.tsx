@@ -1,220 +1,99 @@
-import { Head, router, usePage } from "@inertiajs/react";
-import AppLayout from "../../Layouts/AppLayout";
-
-interface Overview {
-    sale_count: number;
-    revenue_cents: number;
-    avg_sale_cents: number;
-}
-interface TrendPoint {
-    date: string;
-    revenue_cents: number;
-    count: number;
-}
-interface TopProduct {
-    product_id: string;
-    name: string;
-    qty_sold: number;
-    revenue_cents: number;
-}
-interface DeadStock {
-    product_id: string;
-    name: string;
-    quantity: number;
-}
-interface BranchPerf {
-    branch_id: string;
-    name: string;
-    sale_count: number;
-    revenue_cents: number;
-}
-interface Props {
-    days: number;
-    overview: Overview;
-    trend: TrendPoint[];
-    topProducts: TopProduct[];
-    deadStock: DeadStock[];
-    branches: BranchPerf[];
-    [key: string]: unknown;
-}
+import AppLayout from "../../Layouts/AppLayout.js";
+import { usePageTitle, useQuery } from "../../lib/hooks.js";
+import { api } from "../../lib/api.js";
+import { useState } from "react";
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-
-function setPeriod(days: number) {
-    router.get("/analytics", { days }, { preserveScroll: true });
-}
+const SLICE_COLORS = ["#7c3aed", "#059669", "#d97706", "#dc2626", "#4f46e5", "#0891b2"];
 
 export default function AnalyticsIndex() {
-    const { days, overview, trend, topProducts, deadStock, branches } = usePage<Props>().props;
-    const maxRevenue = Math.max(1, ...trend.map((t) => t.revenue_cents));
+  usePageTitle("Analytics");
+  const [range, setRange] = useState(30);
+  const { data, loading } = useQuery(() => api.analytics.overview(range), [range]);
 
-    return (
-        <AppLayout>
-            <Head title="Analytics" />
+  const salesByDay = (data?.salesByDay ?? []) as { date: string; total_cents: number; count: number }[];
+  const topProducts = (data?.topProducts ?? []) as { name: string; revenue: number; units_sold: number }[];
+  const paymentMethods = (data?.paymentMethods ?? []) as { method: string; _sum: { amountCents: number }; _count: number }[];
+  const totalRevenue = salesByDay.reduce((s, d) => s + (d.total_cents ?? 0), 0);
+  const maxRevenue = Math.max(1, ...salesByDay.map(d => d.total_cents ?? 0));
 
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <h1 className="text-xl font-semibold tracking-tight text-ink">Analytics</h1>
-                <div className="flex gap-1 rounded-lg bg-canvas p-1">
-                    {[7, 30, 90].map((d) => (
-                        <button
-                            key={d}
-                            onClick={() => setPeriod(d)}
-                            className={`rounded-md px-3 py-1 text-sm font-medium ${
-                                days === d ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink"
-                            }`}
-                        >
-                            {d}d
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            {/* Overview cards */}
-            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <Card label="Revenue" value={money(overview.revenue_cents)} />
-                <Card label="Sales" value={overview.sale_count.toLocaleString()} />
-                <Card label="Average sale" value={money(overview.avg_sale_cents)} />
-            </div>
-
-            {/* Daily trend */}
-            <section className="mt-6 rounded-xl border border-hairline bg-surface p-4">
-                <h2 className="mb-4 text-sm font-medium text-ink">Revenue, last {days} days</h2>
-                {overview.sale_count === 0 ? (
-                    <p className="py-10 text-center text-sm text-muted">No sales in this period yet.</p>
-                ) : (
-                    <div className="flex h-40 items-end gap-0.5">
-                        {trend.map((t) => (
-                            <div
-                                key={t.date}
-                                className="flex-1 rounded-t bg-brand-500/80 transition-all hover:bg-brand-500"
-                                style={{ height: `${Math.max(2, (t.revenue_cents / maxRevenue) * 100)}%` }}
-                                title={`${t.date}: ${money(t.revenue_cents)} · ${t.count} sales`}
-                            />
-                        ))}
-                    </div>
-                )}
-            </section>
-
-            <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-                {/* Top products */}
-                <Panel title="Top products">
-                    {topProducts.length === 0 ? (
-                        <Empty />
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                <tr className="text-left text-xs text-muted">
-                                    <th className="pb-2 font-medium">Product</th>
-                                    <th className="pb-2 text-right font-medium">Sold</th>
-                                    <th className="pb-2 text-right font-medium">Revenue</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                {topProducts.map((p) => (
-                                    <tr key={p.product_id} className="border-t border-hairline">
-                                        <td className="py-2 text-ink">{p.name}</td>
-                                        <td className="py-2 text-right tabular-nums text-muted">{p.qty_sold}</td>
-                                        <td className="py-2 text-right tabular-nums text-ink">
-                                            {money(p.revenue_cents)}
-                                        </td>
-                                    </tr>
-                                ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </Panel>
-
-                {/* Dead stock */}
-                <Panel title="Dead stock" subtitle="In stock, no sales this period">
-                    {deadStock.length === 0 ? (
-                        <Empty label="Nothing gathering dust — every stocked item sold." />
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                <tr className="text-left text-xs text-muted">
-                                    <th className="pb-2 font-medium">Product</th>
-                                    <th className="pb-2 text-right font-medium">On hand</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                {deadStock.map((p) => (
-                                    <tr key={p.product_id} className="border-t border-hairline">
-                                        <td className="py-2 text-ink">{p.name}</td>
-                                        <td className="py-2 text-right tabular-nums text-amber-600">{p.quantity}</td>
-                                    </tr>
-                                ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </Panel>
-            </div>
-
-            {/* Branch performance */}
-            <Panel title="Branch performance" className="mt-6">
-                {branches.length === 0 ? (
-                    <Empty />
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                            <tr className="text-left text-xs text-muted">
-                                <th className="pb-2 font-medium">Branch</th>
-                                <th className="pb-2 text-right font-medium">Sales</th>
-                                <th className="pb-2 text-right font-medium">Revenue</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {branches.map((b) => (
-                                <tr key={b.branch_id} className="border-t border-hairline">
-                                    <td className="py-2 text-ink">{b.name}</td>
-                                    <td className="py-2 text-right tabular-nums text-muted">{b.sale_count}</td>
-                                    <td className="py-2 text-right tabular-nums text-ink">{money(b.revenue_cents)}</td>
-                                </tr>
-                            ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </Panel>
-        </AppLayout>
-    );
-}
-
-function Card({ label, value }: { label: string; value: string }) {
-    return (
-        <div className="rounded-xl border border-hairline bg-surface p-4">
-            <div className="text-sm text-muted">{label}</div>
-            <div className="mt-1 text-2xl font-semibold tabular-nums text-ink">{value}</div>
+  return (
+    <AppLayout>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-ink">Analytics</h1>
+          <p className="mt-1 text-sm text-muted">Revenue and performance insights</p>
         </div>
-    );
-}
+        <select value={range} onChange={(e) => setRange(Number(e.target.value))}
+          className="rounded-xl border border-hairline bg-surface px-3 py-2 text-sm">
+          {[7, 14, 30, 90, 365].map(d => <option key={d} value={d}>Last {d} days</option>)}
+        </select>
+      </div>
 
-function Panel({
-                   title,
-                   subtitle,
-                   className = "",
-                   children,
-               }: {
-    title: string;
-    subtitle?: string;
-    className?: string;
-    children: React.ReactNode;
-}) {
-    return (
-        <section className={`rounded-xl border border-hairline bg-surface p-4 ${className}`}>
-            <div className="mb-3">
-                <h2 className="text-sm font-medium text-ink">{title}</h2>
-                {subtitle && <p className="text-xs text-muted">{subtitle}</p>}
+      {loading ? (
+        <div className="mt-8 flex justify-center"><Spinner /></div>
+      ) : (
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {/* Revenue trend */}
+          <section className="rounded-xl border border-hairline bg-surface p-5 lg:col-span-2">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-medium text-muted">Revenue — Last {range} days</h2>
+              <span className="font-semibold text-ink">{money(totalRevenue)}</span>
             </div>
-            {children}
-        </section>
-    );
+            {salesByDay.length === 0 ? <EmptyChart label="No sales in this period." /> : (
+              <div className="flex h-40 items-end gap-0.5">
+                {salesByDay.map((d) => (
+                  <div key={d.date} title={`${d.date}: ${money(d.total_cents ?? 0)}`}
+                    className="flex-1 min-w-0 rounded-t bg-brand-500/80 hover:bg-brand-600 transition-all"
+                    style={{ height: `${Math.max(3, ((d.total_cents ?? 0) / maxRevenue) * 100)}%` }} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Top products */}
+          <section className="rounded-xl border border-hairline bg-surface p-5">
+            <h2 className="mb-4 text-sm font-medium text-muted">Top Products</h2>
+            {topProducts.length === 0 ? <EmptyChart label="No sales yet." /> : (
+              <ul className="space-y-2">
+                {topProducts.slice(0, 8).map((p, i) => (
+                  <li key={i} className="flex items-center justify-between text-sm">
+                    <span className="truncate text-ink">{p.name}</span>
+                    <span className="ml-2 shrink-0 tabular-nums text-muted">{money(Number(p.revenue))}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {/* Payment methods */}
+          <section className="rounded-xl border border-hairline bg-surface p-5">
+            <h2 className="mb-4 text-sm font-medium text-muted">Payment Methods</h2>
+            {paymentMethods.length === 0 ? <EmptyChart label="No payments yet." /> : (
+              <ul className="space-y-2.5">
+                {paymentMethods.map((m, i) => {
+                  const total = paymentMethods.reduce((s, x) => s + (x._sum?.amountCents ?? 0), 0);
+                  const pct = total > 0 ? Math.round(((m._sum?.amountCents ?? 0) / total) * 100) : 0;
+                  return (
+                    <li key={m.method}>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="capitalize text-ink">{m.method}</span>
+                        <span className="tabular-nums text-muted">{pct}%</span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-canvas">
+                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: SLICE_COLORS[i % SLICE_COLORS.length] }} />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
+    </AppLayout>
+  );
 }
 
-function Empty({ label = "No data yet." }: { label?: string }) {
-    return <p className="py-8 text-center text-sm text-muted">{label}</p>;
-}
+function EmptyChart({ label }: { label: string }) { return <p className="grid h-32 place-items-center text-sm text-muted">{label}</p>; }
+function Spinner() { return <span className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />; }
