@@ -1,6 +1,6 @@
-import { Head, Link, useForm, usePage } from "@inertiajs/react";
 import { useEffect, useState } from "react";
-import type { SharedProps } from "../../lib/types";
+import { Link } from "react-router-dom";
+
 
 interface PlanInfo {
     label: string;
@@ -19,13 +19,7 @@ interface BusinessTierInfo {
     description: string;
     features: string[];
 }
-interface Props extends SharedProps {
-    plans: Record<string, PlanInfo>;
-    hardware: Record<string, HardwareInfo>;
-    businessTier: BusinessTierInfo;
-    enterpriseTier: BusinessTierInfo;
-    zimraAddonPrice: number;
-}
+
 
 const DEMO_PRODUCTS = [
     { name: "Coca-Cola 500ml", price: 1.5 },
@@ -59,14 +53,37 @@ function useMarketingTheme(): [boolean, () => void] {
 }
 
 export default function Home() {
-    const { plans, hardware, businessTier, enterpriseTier } = usePage<Props>().props;
     const [dark, toggleDark] = useMarketingTheme();
     const [enquiryFor, setEnquiryFor] = useState<"business" | "enterprise" | null>(null);
 
+    useEffect(() => {
+        document.title = 'WivaePOS — Run your business smarter. Sell anywhere.';
+    }, []);
+
+    // Static config — these were served by MarketingController from config('paynow.*')
+    // but are hardcoded here since this is a public marketing page with no API deps.
+    const plans: Record<string, PlanInfo> = {
+        byod: { label: "BYOD", price: 30, recurring: true, branches: 1, best_for: "Solo trader, tight budget, or trial", features: ["1 till", "Inventory", "Basic reports"] },
+        standard: { label: "Standard", price: 55, recurring: true, branches: 3, best_for: "Growing retail or quick-service shop", features: ["3 tills", "Inventory", "Analytics", "Staff management", "Tablet bundle included"] },
+        premium: { label: "Premium", price: 90, recurring: true, branches: null, best_for: "Multi-branch or restaurant group", features: ["Unlimited tills", "All features", "ZIMRA Fiscalisation included", "Premium tablet bundle"] },
+    };
+    const hardware: Record<string, HardwareInfo> = {
+        bundle: { label: "Starter bundle (tablet + receipt printer)", price: 450 },
+        printer: { label: "Thermal receipt printer only", price: 120 },
+    };
+    const businessTier: BusinessTierInfo = {
+        label: "Business",
+        description: "A full counter or kiosk setup with managed hardware, onsite training, and a dedicated account manager.",
+        features: ["Counter hardware bundle", "Onsite setup & training", "Dedicated account manager", "Priority support", "Custom branding", "Multi-branch"],
+    };
+    const enterpriseTier: BusinessTierInfo = {
+        label: "Enterprise",
+        description: "Custom integrations, multi-location rollouts, and white-label builds for franchises and chains.",
+        features: ["Custom integration", "Franchise/chain rollout", "White-label", "SLA guarantee", "API access", "On-premise option"],
+    };
+
     return (
         <div className="min-h-screen bg-canvas text-ink transition-colors">
-            <Head title="WivaePOS — Run your business smarter. Sell anywhere." />
-
             <Nav dark={dark} toggleDark={toggleDark} />
             <Hero />
             <OfflineStrip />
@@ -110,11 +127,11 @@ function Nav({ dark, toggleDark }: { dark: boolean; toggleDark: () => void }) {
                     >
                         {dark ? <IconSun /> : <IconMoon />}
                     </button>
-                    <Link href="/login" className="text-sm text-muted hover:text-ink transition-colors">
+                    <Link to="/login" className="text-sm text-muted hover:text-ink transition-colors">
                         Sign in
                     </Link>
                     <Link
-                        href="/register"
+                        to="/register"
                         className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_20px_rgba(124,58,237,0.3)] hover:opacity-90 transition-opacity"
                     >
                         Start free trial
@@ -155,7 +172,7 @@ function Hero() {
                 </p>
                 <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
                     <Link
-                        href="/register"
+                        to="/register"
                         className="rounded-xl bg-gradient-to-r from-violet-500 to-indigo-600 px-7 py-3.5 text-sm font-bold text-white shadow-[0_4px_24px_rgba(124,58,237,0.4)] hover:opacity-90 transition-opacity"
                     >
                         Start 7-day free trial
@@ -425,7 +442,7 @@ function Pricing({
                                 ))}
                             </ul>
                             <Link
-                                href="/register"
+                                to="/register"
                                 className={`mt-7 block rounded-xl py-3 text-center text-sm font-semibold transition-opacity hover:opacity-90 ${
                                     key === "standard"
                                         ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white"
@@ -605,7 +622,7 @@ function FooterCta() {
                     Ready to stop losing sales to load-shedding?
                 </h2>
                 <Link
-                    href="/register"
+                    to="/register"
                     className="mt-7 inline-block rounded-xl bg-gradient-to-r from-violet-500 to-indigo-600 px-8 py-3.5 text-sm font-bold text-white shadow-[0_4px_24px_rgba(124,58,237,0.4)] hover:opacity-90 transition-opacity"
                 >
                     Start your free trial
@@ -679,14 +696,28 @@ function Footer() {
  */
 function EnquiryModal({ tier, onClose }: { tier: "business" | "enterprise"; onClose: () => void }) {
     const [sent, setSent] = useState(false);
-    const form = useForm({ name: "", business_name: "", interested_in: tier, email: "", phone: "", message: "" });
+    const [formData, setFormData] = useState({ name: "", business_name: "", interested_in: tier, email: "", phone: "", message: "" });
+    const [submitting, setSubmitting] = useState(false);
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-    function submit(e: React.FormEvent) {
+    async function submit(e: React.FormEvent) {
         e.preventDefault();
-        form.post("/enquire", {
-            preserveScroll: true,
-            onSuccess: () => setSent(true),
-        });
+        setSubmitting(true);
+        setFieldErrors({});
+        try {
+            const res = await fetch("/enquire", {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json", Accept: "application/json" },
+                body: JSON.stringify(formData),
+            });
+            if (res.ok) { setSent(true); }
+            else {
+                const j = await res.json().catch(() => ({})) as any;
+                if (j?.errors) setFieldErrors(j.errors);
+            }
+        } catch { /* network error — silent */ }
+        finally { setSubmitting(false); }
     }
 
     return (
@@ -713,49 +744,49 @@ function EnquiryModal({ tier, onClose }: { tier: "business" | "enterprise"; onCl
                     </p>
                 ) : (
                     <form onSubmit={submit} className="mt-4 space-y-3">
-                        <Field label="Your name" error={form.errors.name}>
+                        <Field label="Your name" error={fieldErrors.name}>
                             <input
-                                value={form.data.name}
-                                onChange={(e) => form.setData("name", e.target.value)}
+                                value={formData.name}
+                                onChange={(e) => setFormData(f => ({ ...f, name: e.target.value }))}
                                 className="w-full rounded-lg border border-hairline bg-canvas px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50"
                             />
                         </Field>
-                        <Field label="Business name" error={form.errors.business_name}>
+                        <Field label="Business name" error={fieldErrors.business_name}>
                             <input
-                                value={form.data.business_name}
-                                onChange={(e) => form.setData("business_name", e.target.value)}
+                                value={formData.business_name}
+                                onChange={(e) => setFormData(f => ({ ...f, business_name: e.target.value }))}
                                 className="w-full rounded-lg border border-hairline bg-canvas px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50"
                             />
                         </Field>
-                        <Field label="Email" error={form.errors.email}>
+                        <Field label="Email" error={fieldErrors.email}>
                             <input
                                 type="email"
-                                value={form.data.email}
-                                onChange={(e) => form.setData("email", e.target.value)}
+                                value={formData.email}
+                                onChange={(e) => setFormData(f => ({ ...f, email: e.target.value }))}
                                 className="w-full rounded-lg border border-hairline bg-canvas px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50"
                             />
                         </Field>
                         <Field label="Phone (optional)">
                             <input
-                                value={form.data.phone}
-                                onChange={(e) => form.setData("phone", e.target.value)}
+                                value={formData.phone}
+                                onChange={(e) => setFormData(f => ({ ...f, phone: e.target.value }))}
                                 className="w-full rounded-lg border border-hairline bg-canvas px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50"
                             />
                         </Field>
                         <Field label="What are you looking for? (optional)">
               <textarea
                   rows={3}
-                  value={form.data.message}
-                  onChange={(e) => form.setData("message", e.target.value)}
+                  value={formData.message}
+                  onChange={(e) => setFormData(f => ({ ...f, message: e.target.value }))}
                   className="w-full rounded-lg border border-hairline bg-canvas px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50"
               />
                         </Field>
                         <button
                             type="submit"
-                            disabled={form.processing}
+                            disabled={submitting}
                             className="mt-2 w-full rounded-xl bg-gradient-to-r from-violet-500 to-indigo-600 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
                         >
-                            {form.processing ? "Sending…" : "Send enquiry"}
+                            {submitting ? "Sending…" : "Send enquiry"}
                         </button>
                     </form>
                 )}

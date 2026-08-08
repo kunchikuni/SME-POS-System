@@ -1,0 +1,72 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Nav from "../components/Nav";
+import Hero from "../components/Hero";
+import { OfflineStrip, Features } from "../components/FeaturesStrip";
+import Pricing from "../components/Pricing";
+import { FooterCta, Footer } from "../components/Footer";
+import FaqAccordion from "../islands/FaqAccordion";
+import EnquiryFlow from "../islands/EnquiryFlow";
+import type { PlanInfo, HardwareInfo, BusinessTierInfo } from "../components/types";
+
+// Static config — restored figures (see the pricing-restore commit).
+// Not fetched from the API: this is a public page with no per-tenant data,
+// and Pricing.tsx's own comment explains why a missing/stale value here
+// shouldn't be able to take the rest of the page down with it.
+const plans: Record<string, PlanInfo> = {
+  byod: { label: "BYOD", price: 29.99, recurring: true, branches: 1, best_for: "A single counter, testing the waters, or already own a tablet and printer", features: ["1 till", "Inventory", "Basic reports", "Offline first", "Cloud synchronization"] },
+  standard: { label: "Standard", price: 180, recurring: false, branches: 3, best_for: "Growing retail or quick-service shop", features: ["Everything in BYOD", "10\" Android tablet + Bluetooth thermal printer included", "Implementation training included", "Configured, ready to go", "AI Insights", "Task management"] },
+  premium: { label: "Premium", price: 199.9, recurring: false, branches: null, best_for: "Multi-branch or restaurant group", features: ["Everything in Standard", "12\" Android tablet (upgraded)", "Payroll & HR", "ZIMRA Fiscalisation included", "Priority support", "Ongoing training & implementation planning"] },
+};
+const hardware: Record<string, HardwareInfo> = {
+  bundle: { label: "Starter bundle (tablet + receipt printer)", price: 450 },
+  printer: { label: "Thermal receipt printer only", price: 120 },
+};
+const businessTier: BusinessTierInfo = {
+  label: "Business",
+  description: "A full counter or kiosk setup with managed hardware, onsite training, and a dedicated account manager.",
+  features: ["Counter hardware bundle", "Onsite setup & training", "Dedicated account manager", "Priority support", "Custom branding", "Multi-branch"],
+};
+const enterpriseTier: BusinessTierInfo = {
+  label: "Enterprise",
+  description: "Custom integrations, multi-location rollouts, and white-label builds for franchises and chains.",
+  features: ["Custom integration", "Franchise/chain rollout", "White-label", "SLA guarantee", "API access", "On-premise option"],
+};
+---
+
+<Layout>
+  <div class="min-h-screen bg-canvas text-ink transition-colors">
+    <Nav client:load />
+    <Hero />
+    <OfflineStrip />
+    <Features />
+    <Pricing plans={plans} hardware={hardware} />
+
+    {/* Business + Enterprise quote flow — a sibling of Pricing, not nested
+        inside it, so this island's hydration boundary is valid Astro (see
+        Pricing.tsx's docblock for why the nested-prop approach doesn't work). */}
+    <section class="border-t border-hairline px-6 pb-24 transition-colors">
+      <div class="mx-auto max-w-5xl">
+        <div class="mx-auto max-w-lg text-center">
+          <h3 class="font-display text-2xl font-bold tracking-tight">Need something bigger?</h3>
+          <p class="mt-2 text-sm text-muted">A full counter setup, or a custom build for multiple locations — talk to us and we'll quote it properly.</p>
+        </div>
+        <div class="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <EnquiryFlow client:idle businessTier={businessTier} enterpriseTier={enterpriseTier} />
+        </div>
+      </div>
+    </section>
+
+    <section id="faq" class="border-t border-hairline px-6 py-24 transition-colors">
+      <div class="mx-auto max-w-2xl">
+        <h2 class="text-center font-display text-3xl font-bold tracking-tight sm:text-4xl">
+          Frequently asked questions
+        </h2>
+        <FaqAccordion client:visible />
+      </div>
+    </section>
+
+    <FooterCta />
+    <Footer />
+  </div>
+</Layout>

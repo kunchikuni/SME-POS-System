@@ -24,7 +24,6 @@ import { Checkout } from './Checkout';
 import { Receipt } from './Receipt';
 import { PrinterSettings } from './PrinterSettings';
 import { TasksPanel } from './TasksPanel';
-import { TasksButton } from './TasksButton';
 import { ScannerModal } from './ScannerModal';
 import { isScanSupported } from '../hardware/barcodeScanner';
 
@@ -138,8 +137,8 @@ export function RestaurantTill({
         return (
             <Receipt
                 sale={lastSale}
-                tenantName={device.tenant.name}
-                branchName={device.branch.name}
+                device={device}
+                cashierName={shift.cashierName}
                 onDone={newOrder}
             />
         );
@@ -164,7 +163,6 @@ export function RestaurantTill({
                         <SyncBadge />
                         <ThemeToggle />
                         <ModePill mode="restaurant" />
-                        <TasksButton onClick={() => setShowTasks(true)} />
                         <button onClick={onEndShift} className="rounded-lg px-3 py-1.5 text-xs font-medium text-red-400/80 hover:bg-red-500/10 hover:text-red-300 transition-colors">
                             End shift
                         </button>
@@ -344,7 +342,7 @@ export function RestaurantTill({
                             <SyncBadge />
                             <ThemeToggle />
                             <ModePill mode="restaurant" />
-                            <TasksButton onClick={() => setShowTasks(true)} />
+                            <button onClick={() => setShowTasks(true)}   className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Tasks</button>
                             <button onClick={() => setShowPrinter(true)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Printer</button>
                             <button onClick={() => setView('floor')}     className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Floor plan</button>
                             <button onClick={onEndShift}                 className="rounded-lg px-3 py-1.5 text-xs font-medium text-red-400/80 hover:bg-red-500/10 hover:text-red-300 transition-colors">End shift</button>

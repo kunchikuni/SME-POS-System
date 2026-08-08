@@ -1,30 +1,50 @@
-import { Head, Link, useForm, usePage } from "@inertiajs/react";
-import type { FormEvent } from "react";
-import type { SharedProps } from "../../lib/types";
-
-interface LoginProps extends SharedProps {
-  welcome: boolean;
-}
+import { useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
+import { api, ApiError } from "../../lib/api.js";
+import { useAuth } from "../../lib/auth.js";
+import { usePageTitle } from "../../lib/hooks.js";
 
 export default function Login() {
-  const { tenant, welcome, brand } = usePage<LoginProps>().props;
+  usePageTitle("Sign in");
+  const { refetch } = useAuth();
+  const navigate = useNavigate();
 
-  const form = useForm({ email: "", password: "", remember: false });
-  const tenantDomain = brand?.tenantDomain ?? "wivae.test";
-  const registerUrl = typeof window !== "undefined" && window.location.hostname.endsWith(tenantDomain)
-    ? `//${tenantDomain}/register`
-    : "/register";
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<{ email?: string; password?: string; general?: string }>({});
 
-  function submit(e: FormEvent) {
+  const tenantDomain = import.meta.env.VITE_TENANT_DOMAIN ?? "wivae.test";
+  const registerUrl =
+    typeof window !== "undefined" && window.location.hostname.endsWith(tenantDomain)
+      ? `//${tenantDomain}/register`
+      : "/register";
+
+  async function submit(e: FormEvent) {
     e.preventDefault();
-    form.post("/login", { onFinish: () => form.reset("password") });
+    setErrors({});
+    setLoading(true);
+    try {
+      await api.auth.login(email, password);
+      await refetch();
+      navigate("/dashboard", { replace: true });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 422) {
+        const body = err.body as Record<string, string>;
+        setErrors({ email: body.email, password: body.password });
+      } else if (err instanceof ApiError && err.status === 401) {
+        setErrors({ general: "These credentials do not match our records." });
+      } else {
+        setErrors({ general: "Something went wrong. Please try again." });
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <div className="grid min-h-screen place-items-center bg-canvas p-4 sm:p-6 relative overflow-hidden">
-      <Head title="Sign in" />
-
-      {/* Radial glow matching device pairing page */}
+      {/* Radial glow */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(124,58,237,0.12)_0%,transparent_65%)]" />
 
       <div className="relative z-10 w-full max-w-sm anim-pop-in">
@@ -33,17 +53,19 @@ export default function Login() {
           <div className="mx-auto mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-700 text-2xl shadow-[0_0_30px_rgba(124,58,237,0.4)] ring-1 ring-white/10">
             🛒
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink">
-            {tenant?.name ?? "Wivae POS"}
-          </h1>
-          <p className="mt-1.5 text-sm text-muted">
-            {welcome ? "Your store is ready — sign in to get started" : "Sign in to your owner dashboard"}
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight text-ink">Wivae POS</h1>
+          <p className="mt-1.5 text-sm text-muted">Sign in to your owner dashboard</p>
         </div>
 
         {/* Card */}
         <div className="rounded-2xl border border-hairline bg-surface/90 p-6 sm:p-8 shadow-xl backdrop-blur-md">
           <form onSubmit={submit} className="space-y-4">
+            {errors.general && (
+              <p className="rounded-xl bg-red-500/10 px-3 py-2 text-xs text-red-500 ring-1 ring-red-500/20">
+                {errors.general}
+              </p>
+            )}
+
             <div>
               <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-2" htmlFor="email">
                 Email Address
@@ -52,15 +74,15 @@ export default function Login() {
                 id="email"
                 type="email"
                 autoFocus
-                value={form.data.email}
-                onChange={(e) => form.setData("email", e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full rounded-xl border border-hairline bg-canvas/60 px-4 py-3 text-sm text-ink outline-none focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/20 transition-all"
                 placeholder="name@business.com"
-                aria-invalid={Boolean(form.errors.email)}
+                aria-invalid={Boolean(errors.email)}
               />
-              {form.errors.email && (
+              {errors.email && (
                 <p className="mt-1.5 rounded-xl bg-red-500/10 px-3 py-2 text-xs text-red-500 ring-1 ring-red-500/20">
-                  {form.errors.email}
+                  {errors.email}
                 </p>
               )}
             </div>
@@ -72,36 +94,24 @@ export default function Login() {
               <input
                 id="password"
                 type="password"
-                value={form.data.password}
-                onChange={(e) => form.setData("password", e.target.value)}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-xl border border-hairline bg-canvas/60 px-4 py-3 text-sm text-ink outline-none focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/20 transition-all"
                 placeholder="••••••••"
               />
-              {form.errors.password && (
+              {errors.password && (
                 <p className="mt-1.5 rounded-xl bg-red-500/10 px-3 py-2 text-xs text-red-500 ring-1 ring-red-500/20">
-                  {form.errors.password}
+                  {errors.password}
                 </p>
               )}
             </div>
 
-            <div className="flex items-center justify-between pt-1">
-              <label className="flex items-center gap-2.5 text-xs text-muted cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.data.remember}
-                  onChange={(e) => form.setData("remember", e.target.checked)}
-                  className="rounded border-hairline text-violet-600 focus:ring-violet-500"
-                />
-                Keep me signed in
-              </label>
-            </div>
-
             <button
               type="submit"
-              disabled={form.processing}
+              disabled={loading}
               className="mt-2 w-full rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 py-3.5 font-bold text-white text-sm tracking-wide shadow-lg shadow-indigo-500/25 hover:opacity-95 active:scale-[0.99] transition-all disabled:opacity-50"
             >
-              {form.processing ? "Signing in…" : "Sign in"}
+              {loading ? "Signing in…" : "Sign in"}
             </button>
           </form>
         </div>

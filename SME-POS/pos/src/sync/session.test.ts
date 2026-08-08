@@ -5,12 +5,13 @@ function baseSession() {
   return {
     token: 'demo-token',
     device: { id: 'd1', name: 'Till 1' },
-    branch: { id: 'b1', name: 'Main', mode: 'retail' as const },
+    branch: { id: 'b1', name: 'Main', mode: 'retail' as const, address: null, phone: null },
     tenant: {
       name: 'Demo Store',
       theme: {},
       currency: 'USD',
       taxRateBps: 1500,
+      fiscal: { verified: false, taxpayerTin: null, vatNumber: null },
     },
   };
 }
@@ -35,8 +36,8 @@ beforeEach(() => {
 describe('mergeSessionInfo', () => {
   it('does nothing and reports false when there is no session yet', () => {
     const changed = mergeSessionInfo(
-      { name: 'Demo Store', theme: {}, currency: 'USD', taxRateBps: 1500 },
-      { id: 'b1', name: 'Main', mode: 'restaurant' },
+      { name: 'Demo Store', theme: {}, currency: 'USD', taxRateBps: 1500, fiscal: { verified: false, taxpayerTin: null, vatNumber: null } },
+      { id: 'b1', name: 'Main', mode: 'restaurant', address: null, phone: null },
     );
     expect(changed).toBe(false);
     expect(getSession()).toBeNull();
