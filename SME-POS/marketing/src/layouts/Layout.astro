@@ -1,0 +1,57 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = "WivaePOS — Run your business smarter. Sell anywhere.",
+  description = "Offline-first point of sale for Zimbabwean SMEs. Sales, inventory, staff, and reporting across every device and branch — built to keep selling through load-shedding and dropped signal.",
+} = Astro.props;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="description" content={description} />
+    <title>{title}</title>
+
+    <!-- Fonts: --font-display (Space Grotesk) was declared in the token file
+         but never actually loaded anywhere in the dashboard, so it silently
+         fell back to system fonts everywhere. Loading both properly here;
+         worth the same fix on the dashboard side separately. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!--
+      Dark-mode: applied BEFORE first paint (inline, blocking, in <head>) to
+      avoid a light->dark flash on load. Reads the same "wivae.theme"
+      localStorage key the dashboard's useDarkMode uses (see app.css's own
+      comment on this) — a choice made here carries over after signing in,
+      and vice versa if the visitor already has an account.
+    -->
+    <script is:inline>
+      (function () {
+        try {
+          var stored = localStorage.getItem("wivae.theme");
+          if (stored === "dark") {
+            document.documentElement.classList.add("dark");
+          }
+        } catch (e) {
+          /* localStorage unavailable (private browsing etc.) — default light */
+        }
+      })();
+    </script>
+  </head>
+  <body class="bg-canvas text-ink transition-colors">
+    <slot />
+  </body>
+</html>

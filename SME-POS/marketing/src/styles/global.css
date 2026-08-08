@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+/*
+  Wivae design tokens — copied verbatim from ../../resources/css/app.css
+  (the dashboard's stylesheet), not reinvented. Keep these two files in sync
+  by hand; there's no build-time sharing mechanism between the two separate
+  Vite/Astro apps. If the dashboard's palette changes, update both.
+
+  The brand's one bold move is violet — matching the till's retail-accent
+  (#7c3aed) and the Wivae wordmark exactly, so the marketing site, dashboard,
+  and till all read as the same product.
+*/
+@theme {
+    --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+    --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+    --color-brand-50: #f5f3ff;
+    --color-brand-500: #7c3aed;
+    --color-brand-600: #6d28d9;
+    --color-brand-700: #5b21b6;
+
+    --color-positive: #059669;
+    --color-ink: #0f172a;
+    --color-muted: #64748b;
+    --color-hairline: #e2e8f0;
+    --color-surface: #ffffff;
+    --color-canvas: #f8fafc;
+}
+
+/*
+  Dark mode — identical mechanism and identical values to the dashboard's
+  app.css: a `.dark` class on <html>, persisted under the SAME localStorage
+  key ("wivae.theme") so a choice made here carries over after the visitor
+  signs in (see Layout.astro's inline script and islands/DarkModeToggle.tsx).
+*/
+.dark {
+    --color-ink: #f5f3ff;
+    --color-muted: #9c92b8;
+    --color-hairline: rgba(255, 255, 255, 0.10);
+    --color-surface: #120b24;
+    --color-canvas: #0a0612;
+}
+
+.dark html,
+html.dark {
+    color-scheme: dark;
+}
+
+.dark .bg-surface {
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.dark .bg-brand-500 {
+    box-shadow: 0 4px 20px -4px rgba(124, 58, 237, 0.45);
+}
+
+.dark .bg-brand-50 {
+    background: rgba(124, 58, 237, 0.15);
+}
+
+html {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+}
+
+.font-tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+}
