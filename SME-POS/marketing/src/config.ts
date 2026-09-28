@@ -1,5 +1,6 @@
 /**
- * Dashboard URL — where "Sign in" and "Start free trial" links point.
+ * Dashboard URL — where "Start free trial" links point (sign-up lives on
+ * the central dashboard address).
  *
  * In production: set PUBLIC_APP_URL in your deployment environment.
  * In dev: defaults to http://localhost:5173 automatically — no .env file needed.
@@ -11,7 +12,6 @@ const DEFAULT_APP_URL = import.meta.env.DEV
 
 export const APP_URL = import.meta.env.PUBLIC_APP_URL ?? DEFAULT_APP_URL;
 
-export const LOGIN_URL    = `${APP_URL}/login`;
 export const REGISTER_URL = `${APP_URL}/register`;
 
 /**
@@ -23,23 +23,23 @@ export const REGISTER_URL = `${APP_URL}/register`;
 export const API_URL = import.meta.env.PUBLIC_API_URL ?? "/api";
 
 /**
- * Each business's till lives on its own workspace subdomain, at /pos/ — a
- * PWA can only be installed from its own origin, so the marketing page can't
- * install it directly. It sends the visitor to their workspace's till with
- * ?install=1, where the pairing screen leads with the install card.
+ * Signing in only works on a business's own workspace address
+ * (<workspace>.<domain>) — the server resolves the business from the host,
+ * and refuses a sign-in on the central address. So "Sign in" here asks for
+ * the workspace and sends the visitor to that workspace's sign-in page.
+ * (There used to be a plain LOGIN_URL = APP_URL/login, which could never
+ * sign anyone in.)
  *
- * Dev: http://<workspace>.localhost:5174/pos/ (POS Vite server, see
- * pos/vite.config.ts) — *.localhost needs no hosts entries and is a secure
- * context, so the till can actually be installed from it.
- * Prod: https://<workspace>.<PUBLIC_TENANT_DOMAIN>/pos/.
+ * Dev: http://<workspace>.localhost:5173/login (dashboard Vite server).
+ * Prod: https://<workspace>.<PUBLIC_TENANT_DOMAIN>/login.
  */
 const TENANT_DOMAIN =
     import.meta.env.PUBLIC_TENANT_DOMAIN ?? (import.meta.env.DEV ? "localhost" : "wivae.com");
 
-export function tillUrl(workspace: string): string {
+export function workspaceLoginUrl(workspace: string): string {
     return import.meta.env.DEV
-        ? `http://${workspace}.${TENANT_DOMAIN}:5174/pos/?install=1`
-        : `https://${workspace}.${TENANT_DOMAIN}/pos/?install=1`;
+        ? `http://${workspace}.${TENANT_DOMAIN}:5173/login`
+        : `https://${workspace}.${TENANT_DOMAIN}/login`;
 }
 
 export const TENANT_SUFFIX = `.${TENANT_DOMAIN}`;
