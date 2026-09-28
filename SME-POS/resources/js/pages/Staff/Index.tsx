@@ -92,11 +92,18 @@ export default function StaffIndex() {
                     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${ROLE_TINT[s.role] ?? ""}`}>{s.role}</span>
                   </td>
                   <td className="px-4 py-3 text-muted">{s.branch ?? "—"}</td>
-                  <td className="px-4 py-3 text-muted">{s.dashboard ? "Dashboard + Till" : "Till only"}</td>
+                  <td className="px-4 py-3 text-muted">
+                    {s.dashboard ? (s.hasPin ? "Dashboard + Till" : "Dashboard only") : "Till only"}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-2">
-                      {s.hasPin && (
-                        <button onClick={() => resetPin(s.id)} className="rounded-lg border border-hairline px-2 py-1 text-xs hover:bg-canvas">Reset PIN</button>
+                      {/* Owners/managers are created with a password only; "Set PIN"
+                          gives them a till PIN so they can sign in there too (needed
+                          for owner/manager-only till actions like Receive stock). */}
+                      {(s.hasPin || s.dashboard) && (
+                        <button onClick={() => resetPin(s.id)} className="rounded-lg border border-hairline px-2 py-1 text-xs hover:bg-canvas">
+                          {s.hasPin ? "Reset PIN" : "Set PIN"}
+                        </button>
                       )}
                       <button onClick={() => { if (confirm(`Remove ${s.name}?`)) deleteStaff(s.id); }}
                         className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50">Remove</button>

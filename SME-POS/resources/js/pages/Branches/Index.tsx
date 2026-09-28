@@ -85,7 +85,20 @@ export default function BranchesIndex() {
 
   const { submit: deleteBranch } = useMutation(
     (id: string) => api.branches.delete(id),
-    { onSuccess: () => { showFlash("Branch removed."); refetch(); } }
+    {
+      onSuccess: () => { showFlash("Branch removed."); refetch(); },
+      // e.g. "Town still has 1 till paired" — the server refuses rather than
+      // leave tills selling into a removed branch.
+      onError: (err) => showFlash(err.message, "error"),
+    }
+  );
+
+  const { submit: makeDefault } = useMutation(
+    (id: string) => api.branches.update(id, { isDefault: true }),
+    {
+      onSuccess: () => { showFlash("Default branch changed."); refetch(); },
+      onError: (err) => showFlash(err.message, "error"),
+    }
   );
 
   function openAdd() {
@@ -152,6 +165,14 @@ export default function BranchesIndex() {
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-2">
                       <button onClick={() => openEdit(b)} className="rounded-lg border border-hairline px-2 py-1 text-xs hover:bg-canvas">Edit</button>
+                      {!b.isDefault && (
+                        <button
+                          onClick={() => confirm(`Make ${b.name} the default branch? Restocks, new-product stock and CSV imports go here when no branch is chosen.`) && makeDefault(b.id)}
+                          className="rounded-lg border border-hairline px-2 py-1 text-xs hover:bg-canvas"
+                        >
+                          Make default
+                        </button>
+                      )}
                       {!b.isDefault && (
                         <button
                           onClick={() => confirm(`Remove ${b.name}?`) && deleteBranch(b.id)}

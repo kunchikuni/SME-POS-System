@@ -11,6 +11,9 @@ export default function ProductCreate() {
   const navigate = useNavigate();
   const { data } = useQuery(() => api.products.formData(), []);
   const categories: Category[] = data?.categories ?? [];
+  const { data: branchData } = useQuery(() => api.branches.list(), []);
+  const branches = branchData?.branches ?? [];
+  const defaultBranchId = branches.find((b) => b.isDefault)?.id ?? branches[0]?.id ?? "";
 
   const [form, setForm] = useState({
     name: "",
@@ -20,7 +23,9 @@ export default function ProductCreate() {
     type: "retail",
     trackStock: true,
     initialQty: "0",
+    branchId: "", // "" until chosen = the default branch
   });
+  const stockBranchId = form.branchId || defaultBranchId;
 
   const { submit, loading, errors, error } = useMutation(
     (d: typeof form) => api.products.create({
@@ -31,6 +36,7 @@ export default function ProductCreate() {
       type: d.type,
       trackStock: d.trackStock,
       initialQty: d.trackStock ? parseInt(d.initialQty || "0", 10) : 0,
+      branchId: stockBranchId || null,
     }),
     { onSuccess: () => navigate("/products") }
   );
@@ -97,6 +103,24 @@ export default function ProductCreate() {
             onChange={(v) => setForm(f => ({ ...f, initialQty: v.replace(/\D/g, "") }))}
             error={errors.initialQty}
           />
+        )}
+
+        {/* Opening stock belongs to ONE branch — say which, rather than it
+            silently landing on the default. Single-branch tenants skip this. */}
+        {form.trackStock && branches.length > 1 && (
+          <label className="block">
+            <span className="text-sm font-medium">Opening stock goes to</span>
+            <select
+              value={stockBranchId}
+              onChange={(e) => setForm(f => ({ ...f, branchId: e.target.value }))}
+              className="mt-1 w-full rounded-lg border border-hairline bg-surface px-3 py-2 text-sm focus-visible:border-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30"
+            >
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}{b.isDefault ? " (default)" : ""}</option>
+              ))}
+            </select>
+            {errors.branchId && <span className="mt-1 block text-xs text-red-600">{errors.branchId}</span>}
+          </label>
         )}
 
         <button

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
     addProduct,
+    atStockLimit,
+    availableFor,
+    qtyInCart,
     buildSaleMutation,
     cartTotals,
     emptyCart,
@@ -26,6 +29,38 @@ function product(overrides: Partial<Product> = {}): Product {
         is_active: true,
     };
 }
+
+describe('stock limits', () => {
+    const stock = new Map([['p1', 2], ['neg', -3]]);
+
+    it('stops adding once the cart holds everything on hand', () => {
+        const p = product();
+        const available = availableFor(p, stock);
+        let cart = emptyCart();
+        cart = addProduct(cart, p, available);
+        cart = addProduct(cart, p, available);
+        const capped = addProduct(cart, p, available);
+        expect(capped).toBe(cart); // unchanged — refused
+        expect(qtyInCart(capped, 'p1')).toBe(2);
+        expect(atStockLimit(capped.lines[0], stock)).toBe(true);
+    });
+
+    it('clamps an explicit quantity to what is on hand', () => {
+        const p = product();
+        const cart = setQty(addProduct(emptyCart(), p), 'p1', 20, availableFor(p, stock));
+        expect(qtyInCart(cart, 'p1')).toBe(2);
+    });
+
+    it('treats a tracked product with no stock row, or a negative level, as none available', () => {
+        expect(availableFor(product({ id: 'never-stocked' }), stock)).toBe(0);
+        expect(availableFor(product({ id: 'neg' }), stock)).toBe(0);
+        expect(addProduct(emptyCart(), product({ id: 'never-stocked' }), 0).lines).toHaveLength(0);
+    });
+
+    it('does not limit products that do not track stock', () => {
+        expect(availableFor(product({ id: 'svc', track_stock: false }), stock)).toBeUndefined();
+    });
+});
 
 describe('cart operations', () => {
     it('merges repeated products into one line and bumps qty', () => {

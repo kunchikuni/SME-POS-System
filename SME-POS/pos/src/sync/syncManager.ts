@@ -1,7 +1,7 @@
 import { api, ApiError, OfflineError } from './apiClient';
 import { ack, markAttempt, pendingCount, pendingRetryable, pendingStuck, resetBackoff } from './outbox';
 import { mergeSessionInfo } from './session';
-import { db, getCursor, setCursor } from '../db/database';
+import { db, getCursor, setCursor, type OutboxEntry } from '../db/database';
 import type { BootstrapResponse, Product, PullResponse, Table } from '../types/contract';
 
 /**
@@ -19,8 +19,9 @@ import type { BootstrapResponse, Product, PullResponse, Table } from '../types/c
  *   - flush() now uses pendingRetryable() with exponential backoff — entries
  *     that have failed 5+ times are skipped until their backoff window passes,
  *     preventing endless hammering of a broken endpoint on every 30s poll.
- *   - The cursor returned by push is applied BEFORE pull, saving the round-trip
- *     of re-fetching data the server already told us about.
+ *   - Only pull moves the cursor. Push used to jump it to the push's end
+ *     time, which skipped the push's own stock changes (a received delivery)
+ *     and anything other tills changed in between.
  *   - bootstrap() is fully atomic: both the catalog write and the cursor set
  *     happen inside a single Dexie transaction. A crash between them previously
  *     left the DB with data but no cursor, triggering a redundant re-bootstrap.
@@ -70,6 +71,14 @@ export interface SyncStatus {
 }
 
 type Listener = (status: SyncStatus) => void;
+
+/**
+ * Set once a till has done the one-time full re-pull (see pull()). V2: tills
+ * that already caught up under V1 did so before they had a customers table,
+ * and existing customers only reach a till via a pull that includes them —
+ * so everyone re-pulls once more to fill it.
+ */
+const CURSOR_CATCH_UP_KEY = 'cursorCatchUpV2';
 
 export class SyncManager {
     private status: SyncStatus = {
@@ -151,10 +160,12 @@ export class SyncManager {
 
         await db.transaction(
             'rw',
-            [db.categories, db.products, db.stock, db.staff, db.diningTables, db.meta],
+            [db.categories, db.products, db.stock, db.staff, db.diningTables, db.customers, db.meta],
             async () => {
                 await this.applyBootstrap(snapshot);
                 await setCursor(snapshot.cursor);
+                // A fresh snapshot has nothing to catch up on (see pull()).
+                await db.meta.put({ key: CURSOR_CATCH_UP_KEY, value: true });
             },
         );
 
@@ -210,9 +221,7 @@ export class SyncManager {
      * Drain the outbox. Only retryable entries (not in backoff) are sent.
      * Acked ids are removed and their local sale marked synced.
      *
-     * Cursor advancement: the server returns the cursor state AFTER applying
-     * the mutations. We advance the local cursor to that value before pull(),
-     * saving the unnecessary re-fetch of data the server already told us about.
+     * Does not touch the cursor — see the note at the end of this method.
      */
     async flush(): Promise<void> {
         const entries = await pendingRetryable();
@@ -257,20 +266,31 @@ export class SyncManager {
             this.emit({ lastSyncBatch: { count: result.acked.length, at: new Date().toISOString() } });
         }
 
-        // Advance cursor from push result — avoids re-pulling data we just sent.
-        if (result.cursor) {
-            await setCursor(result.cursor);
-        }
+        // Deliberately NOT advancing the cursor from result.cursor. Doing so
+        // skipped (a) the stock level our own push just changed — a received
+        // delivery never showed on the till that received it — and (b) any
+        // change another till or the dashboard made between our last pull and
+        // this push. Only pull() moves the cursor, from what it actually read.
     }
 
     /** Apply server-authoritative changes since our cursor. */
     async pull(): Promise<void> {
-        const since = await getCursor();
-        if (since === null) return; // not bootstrapped yet
+        const cursor = await getCursor();
+        if (cursor === null) return; // not bootstrapped yet
+
+        // One-time catch-up for tills that ran with the old cursor bugs (push
+        // jumping the cursor forward; the server stamping it after its
+        // queries): changes they skipped sit BEFORE their saved cursor, so an
+        // ordinary pull would never return them. Pulling once from the epoch
+        // re-sends every row as an absolute value — idempotent — then the
+        // marker stops it happening again.
+        const caughtUp = (await db.meta.get(CURSOR_CATCH_UP_KEY))?.value === true;
+        const since = caughtUp ? cursor : new Date(0).toISOString();
 
         const changes = await api.pull(since);
         await this.applyPull(changes);
         await setCursor(changes.cursor);
+        if (!caughtUp) await db.meta.put({ key: CURSOR_CATCH_UP_KEY, value: true });
     }
 
     // ── Local application ────────────────────────────────────────────────────
@@ -289,20 +309,33 @@ export class SyncManager {
         await db.staff.bulkPut(snapshot.staff);
         await db.diningTables.clear();
         await db.diningTables.bulkPut(tables);
+        await db.customers.clear();
+        await db.customers.bulkPut(snapshot.customers ?? []);
     }
 
     private async applyPull(changes: PullResponse): Promise<void> {
         await db.transaction(
             'rw',
-            db.categories,
-            db.products,
-            db.stock,
-            db.diningTables,
-            db.staff,
+            [db.categories, db.products, db.stock, db.diningTables, db.staff, db.customers, db.outbox],
             async () => {
+                // Server figures are authoritative for everything the server has
+                // APPLIED — but not for this till's still-queued mutations (a sale
+                // rung up while this sync was in flight, or one whose push failed
+                // during an outage). Writing the bare server level used to erase
+                // their local decrement, so the till showed those units as back
+                // in stock and let them be sold again: an oversell that surfaced
+                // as negative stock on the dashboard. Re-apply what's pending on
+                // top, in the same transaction the outbox is read in.
+                const pending = pendingEffects(await db.outbox.toArray());
+
                 if (changes.categories.length) await db.categories.bulkPut(changes.categories);
                 if (changes.products.length) await db.products.bulkPut(changes.products);
-                if (changes.stock.length) await db.stock.bulkPut(changes.stock);
+                if (changes.stock.length) {
+                    await db.stock.bulkPut(changes.stock.map((s) => ({
+                        ...s,
+                        quantity: s.quantity + (pending.stock.get(s.product_id) ?? 0),
+                    })));
+                }
                 if (changes.tables.length) await db.diningTables.bulkPut(changes.tables);
 
                 if (changes.staff.length) {
@@ -310,6 +343,23 @@ export class SyncManager {
                     const live = changes.staff.filter((s) => !s.removed);
                     if (removedIds.length) await db.staff.bulkDelete(removedIds);
                     if (live.length) await db.staff.bulkPut(live);
+                }
+
+                // Same tombstone handling as staff. The server's balance is
+                // authoritative and replaces this till's optimistic one — it
+                // already includes our credit sales/repayments once acked
+                // (flush runs before pull).
+                const customers = changes.customers ?? [];
+                if (customers.length) {
+                    const removedIds = customers.filter((c) => c.removed).map((c) => c.id);
+                    const live = customers
+                        .filter((c) => !c.removed)
+                        .map(({ id, name, phone, balance_cents }) => ({
+                            id, name, phone,
+                            balance_cents: balance_cents + (pending.balance.get(id) ?? 0),
+                        }));
+                    if (removedIds.length) await db.customers.bulkDelete(removedIds);
+                    if (live.length) await db.customers.bulkPut(live);
                 }
             },
         );
@@ -324,6 +374,39 @@ export class SyncManager {
             this.emit({ needsReauth: true });
         }
     }
+}
+
+/**
+ * What this till's not-yet-acknowledged mutations do to stock levels and
+ * customer balances, relative to the server's figures — the local
+ * optimistic effects (checkout.ts, ReceiveStock, RecordPayment) that a pull
+ * must preserve until the server has applied them.
+ */
+export function pendingEffects(entries: OutboxEntry[]): {
+    stock: Map<string, number>;
+    balance: Map<string, number>;
+} {
+    const stock = new Map<string, number>();
+    const balance = new Map<string, number>();
+    const add = (m: Map<string, number>, key: string, delta: number) => m.set(key, (m.get(key) ?? 0) + delta);
+
+    for (const { payload } of entries) {
+        if (payload.type === 'sale.create') {
+            for (const line of payload.sale.lines) {
+                // Only tracked lines carry a movement_id (see buildSaleMutation).
+                if (line.product_id && line.movement_id) add(stock, line.product_id, -line.qty);
+            }
+            const credit = payload.sale.payments
+                .filter((p) => p.method === 'credit')
+                .reduce((sum, p) => sum + p.amount_cents, 0);
+            if (credit > 0 && payload.sale.customer) add(balance, payload.sale.customer.id, credit);
+        } else if (payload.type === 'stock.receive') {
+            add(stock, payload.product_id, payload.qty);
+        } else if (payload.type === 'debt.repay') {
+            add(balance, payload.customer_id, -payload.amount_cents);
+        }
+    }
+    return { stock, balance };
 }
 
 function isEntryAttributable(error: unknown): boolean {

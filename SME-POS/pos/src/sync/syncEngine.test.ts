@@ -19,8 +19,8 @@ import { db, getCursor, setCursor } from '../db/database';
 import { ack, enqueue, pending } from '../sync/outbox';
 import { syncManager } from '../sync/syncManager';
 import { getSession, saveSession } from '../sync/session';
-import { completeSale } from '../pos/checkout';
-import { buildSaleMutation, addProduct, emptyCart } from '../pos/cart';
+import { completeSale, CreditCustomerRequiredError, InsufficientStockError } from '../pos/checkout';
+import { buildSaleMutation, addProduct, emptyCart, setQty } from '../pos/cart';
 import type { BootstrapResponse, Product, PullResponse } from '../types/contract';
 
 function product(overrides: Partial<Product> = {}): Product {
@@ -51,6 +51,7 @@ beforeEach(async () => {
         db.sales.clear(),
         db.outbox.clear(),
         db.meta.clear(),
+        db.customers.clear(),
     ]);
 });
 
@@ -90,6 +91,50 @@ describe('completeSale (offline hot path)', () => {
         expect(await pending()).toHaveLength(1);
         expect((await db.stock.get('p1'))?.quantity).toBe(8); // 10 - 2
     });
+
+    it('records a credit sale against the customer, locally and on the wire', async () => {
+        vi.spyOn(syncManager, 'sync').mockResolvedValue(undefined);
+        await db.stock.put({ product_id: 'p1', quantity: 10 });
+        await db.customers.put({ id: 'cust1', name: 'Tariro', phone: null, balance_cents: 500 });
+
+        const sale = await completeSale(addProduct(emptyCart(), product({ id: 'p1' })), {
+            cashierId: 'c1',
+            payments: [{ method: 'credit', amount_cents: 150 }],
+            customer: { id: 'cust1', name: 'Tariro', phone: null },
+            tenantRateBps: 0,
+        });
+
+        expect(sale.customer).toEqual({ id: 'cust1', name: 'Tariro', phone: null });
+        expect((await db.customers.get('cust1'))?.balance_cents).toBe(650); // 500 + 150, straight away
+    });
+
+    it('refuses a credit sale with no customer and saves nothing', async () => {
+        vi.spyOn(syncManager, 'sync').mockResolvedValue(undefined);
+        await db.stock.put({ product_id: 'p1', quantity: 10 });
+
+        await expect(
+            completeSale(addProduct(emptyCart(), product({ id: 'p1' })), {
+                cashierId: 'c1', payments: [{ method: 'credit', amount_cents: 150 }], customer: null, tenantRateBps: 0,
+            }),
+        ).rejects.toBeInstanceOf(CreditCustomerRequiredError);
+        expect(await db.sales.count()).toBe(0);
+    });
+
+    it('refuses a sale for more than is on hand and saves nothing', async () => {
+        vi.spyOn(syncManager, 'sync').mockResolvedValue(undefined);
+        await db.stock.put({ product_id: 'p1', quantity: 10 });
+
+        // 20 in the cart (e.g. stock fell while the cart was open) — no cap passed here on purpose.
+        const cart = setQty(addProduct(emptyCart(), product({ id: 'p1' })), 'p1', 20);
+
+        await expect(
+            completeSale(cart, { cashierId: 'c1', payments: [{ method: 'cash', amount_cents: 3000 }], tenantRateBps: 0 }),
+        ).rejects.toBeInstanceOf(InsufficientStockError);
+
+        expect(await db.sales.count()).toBe(0);
+        expect(await pending()).toHaveLength(0);
+        expect((await db.stock.get('p1'))?.quantity).toBe(10); // untouched
+    });
 });
 
 describe('syncManager.flush', () => {
@@ -125,6 +170,19 @@ describe('syncManager.flush', () => {
 
         await expect(syncManager.flush()).resolves.toBeUndefined();
         expect(await pending()).toHaveLength(1); // still queued for retry
+    });
+
+    it('leaves the cursor alone, so the next pull still returns what the push changed', async () => {
+        await setCursor('t0');
+        const mutation = buildSaleMutation(addProduct(emptyCart(), product()), {
+            cashierId: null, currency: 'USD', payments: [], tenantRateBps: 0,
+        });
+        await enqueue(mutation.sale.id, mutation);
+        vi.mocked(api.push).mockResolvedValue({ acked: [mutation.sale.id], cursor: 't9' });
+
+        await syncManager.flush();
+
+        expect(await getCursor()).toBe('t0');
     });
 
     it('does not count a server outage against queued sales', async () => {
@@ -228,6 +286,58 @@ describe('syncManager.pull', () => {
     it('is a no-op before the first bootstrap (no cursor yet)', async () => {
         await syncManager.pull();
         expect(api.pull).not.toHaveBeenCalled();
+    });
+
+    it('keeps a still-queued sale deducted when the server level arrives without it', async () => {
+        await setCursor('t0');
+        await db.meta.put({ key: 'cursorCatchUpV2', value: true });
+        // A 3-unit sale rung up but not yet acknowledged by the server.
+        const sale = buildSaleMutation(setQty(addProduct(emptyCart(), product({ id: 'p1' })), 'p1', 3), {
+            cashierId: null, currency: 'USD', payments: [], tenantRateBps: 0,
+        });
+        await enqueue(sale.sale.id, sale);
+
+        vi.mocked(api.pull).mockResolvedValue({
+            cursor: 't1', categories: [], products: [], tables: [], staff: [], customers: [],
+            stock: [{ product_id: 'p1', quantity: 10 }], // server hasn't applied the sale yet
+        });
+        await syncManager.pull();
+
+        // 10 on the server − 3 still pending here, not a "restocked" 10.
+        expect((await db.stock.get('p1'))?.quantity).toBe(7);
+    });
+
+    it('keeps queued credit and repayments on top of the server balance, and drops removed customers', async () => {
+        await setCursor('t0');
+        await db.meta.put({ key: 'cursorCatchUpV2', value: true });
+        await db.customers.put({ id: 'gone', name: 'Old', phone: null, balance_cents: 0 });
+        await enqueue('r1', {
+            type: 'debt.repay', id: 'r1', customer_id: 'cust1', amount_cents: 200, method: 'cash', occurred_at: 'x',
+        });
+
+        vi.mocked(api.pull).mockResolvedValue({
+            cursor: 't1', categories: [], products: [], tables: [], staff: [], stock: [],
+            customers: [
+                { id: 'cust1', name: 'Tariro', phone: null, balance_cents: 1000, removed: false },
+                { id: 'gone', name: 'Old', phone: null, balance_cents: 0, removed: true },
+            ],
+        });
+        await syncManager.pull();
+
+        expect((await db.customers.get('cust1'))?.balance_cents).toBe(800); // 1000 − the 200 not yet synced
+        expect(await db.customers.get('gone')).toBeUndefined();
+    });
+
+    it('re-pulls everything once to recover changes skipped under the old cursor bugs, then pulls incrementally', async () => {
+        await setCursor('2026-09-28T16:40:00.000Z'); // a till that ran before the fix: no catch-up marker
+        const empty: PullResponse = { cursor: 't1', categories: [], products: [], stock: [], tables: [], staff: [], customers: [] };
+        vi.mocked(api.pull).mockResolvedValue(empty);
+
+        await syncManager.pull();
+        expect(api.pull).toHaveBeenLastCalledWith(new Date(0).toISOString());
+
+        await syncManager.pull();
+        expect(api.pull).toHaveBeenLastCalledWith('t1');
     });
 
     /**

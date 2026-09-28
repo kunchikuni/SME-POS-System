@@ -4,13 +4,17 @@ import { db } from '../db/database';
 import { formatMoney, toCents } from '../lib/money';
 import {
     addProduct,
+    atStockLimit,
+    availableFor,
     cartTotals,
     emptyCart,
+    qtyInCart,
     removeLine,
     setQty,
+    stockLimitMessage,
     type Cart,
 } from '../pos/cart';
-import { completeSale } from '../pos/checkout';
+import { completeSale, saleErrorMessage } from '../pos/checkout';
 import type { DeviceSession } from '../sync/session';
 import type { Shift } from '../pos/shift';
 import type {
@@ -20,10 +24,13 @@ import type {
     SalePayload,
     StockLevel,
 } from '../types/contract';
-import { SyncBadge, SettingsChangedBanner, ModePill, ThemeToggle } from './Shared';
+import { SyncBadge, SettingsChangedBanner, ModePill, ThemeToggle, UpdateAvailableBanner, OutboxStuckBanner, SyncedToast, InstallAppButton } from './Shared';
 import { Receipt } from './Receipt';
 import { PrinterSettings } from './PrinterSettings';
 import { TasksPanel } from './TasksPanel';
+import { ReceiveStock } from './ReceiveStock';
+import { CreditCustomerFields, useCreditCustomer } from './CreditCustomer';
+import { RecordPayment } from './RecordPayment';
 import { ScannerModal } from './ScannerModal';
 import { isScanSupported } from '../hardware/barcodeScanner';
 
@@ -34,6 +41,7 @@ const METHODS: { value: PaymentMethod; label: string; icon: string }[] = [
     { value: 'omari',    label: 'Omari',    icon: '💳' },
     { value: 'onemoney', label: 'OneMoney', icon: '📲' },
     { value: 'zipit',    label: 'ZIPIT',    icon: '⚡' },
+    { value: 'credit',   label: 'Credit',   icon: '📒' },
 ];
 
 /**
@@ -52,6 +60,8 @@ export function RetailTill({
     const products  = useLiveQuery(() => db.products.toArray(),   [], [] as Product[]);
     const categories= useLiveQuery(() => db.categories.toArray(), [], [] as Category[]);
     const stockRows = useLiveQuery(() => db.stock.toArray(),       [], [] as StockLevel[]);
+    const credit = useCreditCustomer();
+    const customers = credit.customers;
     const tenantRateBps = device.tenant.taxRateBps;
 
     const [cart,           setCart]           = useState<Cart>(emptyCart);
@@ -64,6 +74,8 @@ export function RetailTill({
     const [saleError,      setSaleError]      = useState<string | null>(null);
     const [showPrinter,    setShowPrinter]    = useState(false);
     const [showTasks,      setShowTasks]      = useState(false);
+    const [showReceiveStock, setShowReceiveStock] = useState(false);
+    const [showRecordPayment, setShowRecordPayment] = useState(false);
     const [showCartSheet,  setShowCartSheet]  = useState(false);
     const [showScanner,    setShowScanner]    = useState(false);
     const [scanMiss,       setScanMiss]       = useState<string | null>(null);
@@ -93,17 +105,32 @@ export function RetailTill({
     const change = method === 'cash' && receivedCents > 0 ? receivedCents - totals.total_cents : null;
     const itemCount = cart.lines.reduce((n, l) => n + l.qty, 0);
 
+    /** Tap or scan: adds one, unless the cart already holds everything on hand. */
+    function tryAdd(p: Product) {
+        const available = availableFor(p, stock);
+        if (available !== undefined && qtyInCart(cart, p.id) >= available) {
+            setSaleError(stockLimitMessage(p, available));
+            return;
+        }
+        setSaleError(null);
+        setCart((c) => addProduct(c, p, available));
+    }
+
     function handleScan(code: string) {
         setShowScanner(false);
         const trimmed = code.trim();
         const match = products.find(
             (p) => p.is_active && (p.barcode === trimmed || p.sku === trimmed),
         );
-        if (match) { setScanMiss(null); setCart((c) => addProduct(c, match)); }
+        if (match) { setScanMiss(null); tryAdd(match); }
         else        { setScanMiss(trimmed); setSearch(trimmed); }
     }
 
     async function completeSaleNow() {
+        if (method === 'credit' && !credit.name.trim()) {
+            setSaleError('Enter the customer\u2019s name for a credit sale.');
+            return;
+        }
         setCompleting(true);
         setSaleError(null);
         try {
@@ -114,15 +141,17 @@ export function RetailTill({
                     amount_cents: totals.total_cents,
                     received_cents: method === 'cash' && receivedCents > 0 ? receivedCents : null,
                 }],
+                customer: method === 'credit' ? credit.toSaleCustomer() : null,
                 tenantRateBps,
             });
             setLastSale(sale);
             setCart(emptyCart());
             setMethod('cash');
             setReceived('');
+            credit.reset();
             setShowCartSheet(false);
-        } catch {
-            setSaleError('Couldn\u2019t save the sale. Please try again.');
+        } catch (err) {
+            setSaleError(saleErrorMessage(err));
         } finally {
             setCompleting(false);
         }
@@ -133,6 +162,7 @@ export function RetailTill({
         setCart(emptyCart());
         setMethod('cash');
         setReceived('');
+        credit.reset();
         setSaleError(null);
     }
 
@@ -147,7 +177,13 @@ export function RetailTill({
         );
     }
 
-    const CartContent = () => (
+    // Called as {renderCart()}, never mounted as {renderCart()}. As a component
+    // declared inside RetailTill it was a NEW component type on every render,
+    // so each keystroke (state change → re-render) unmounted and remounted the
+    // whole cart panel — the credit customer's name box and the cash-received
+    // box lost focus after every letter. A plain function call keeps the same
+    // elements in place between renders.
+    const renderCart = () => (
         <div className="flex h-full flex-col dark-scroll">
             {/* Cart header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
@@ -177,7 +213,10 @@ export function RetailTill({
                         <p className="text-sm text-slate-500">Tap a product to start</p>
                     </div>
                 ) : (
-                    cart.lines.map((line) => (
+                    cart.lines.map((line) => {
+                        const available = availableFor(line.product, stock);
+                        const atLimit = atStockLimit(line, stock);
+                        return (
                         <div
                             key={line.product.id}
                             className="flex items-center gap-3 rounded-xl bg-white/5 px-3 py-2.5 ring-1 ring-white/6 anim-slide-up"
@@ -195,8 +234,10 @@ export function RetailTill({
                                 >−</button>
                                 <span className="w-5 text-center text-sm font-semibold text-white tabular-nums">{line.qty}</span>
                                 <button
-                                    onClick={() => setCart((c) => setQty(c, line.product.id, line.qty + 1))}
-                                    className="h-6 w-6 rounded-md bg-white/8 text-slate-300 hover:bg-white/14 text-xs font-bold transition-colors flex items-center justify-center"
+                                    onClick={() => setCart((c) => setQty(c, line.product.id, line.qty + 1, available))}
+                                    disabled={atLimit}
+                                    title={atLimit ? stockLimitMessage(line.product, available ?? 0) : undefined}
+                                    className="h-6 w-6 rounded-md bg-white/8 text-slate-300 hover:bg-white/14 text-xs font-bold transition-colors flex items-center justify-center disabled:opacity-30 disabled:hover:bg-white/8"
                                 >+</button>
                             </div>
                             <div className="w-16 text-right text-sm font-semibold text-white tabular-nums shrink-0">
@@ -208,7 +249,8 @@ export function RetailTill({
                                 aria-label={`Remove ${line.product.name}`}
                             >✕</button>
                         </div>
-                    ))
+                        );
+                    })
                 )}
             </div>
 
@@ -252,6 +294,8 @@ export function RetailTill({
                             )}
                         </div>
                     )}
+
+                    {method === 'credit' && <CreditCustomerFields credit={credit} />}
                 </div>
 
                 {/* Totals */}
@@ -289,6 +333,9 @@ export function RetailTill({
 
     return (
         <div className="flex min-h-dvh flex-col pos-bg">
+            <UpdateAvailableBanner />
+            <OutboxStuckBanner />
+            <SyncedToast />
             <SettingsChangedBanner />
 
             <div className="flex flex-1 flex-col lg:flex-row">
@@ -305,11 +352,24 @@ export function RetailTill({
                         <div className="flex flex-wrap items-center gap-3">
                             <SyncBadge />
                             <ThemeToggle />
+                            <InstallAppButton />
                             <ModePill mode="retail" />
                             <button
                                 onClick={() => setShowTasks(true)}
                                 className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors"
                             >Tasks</button>
+                            {(shift.role === 'owner' || shift.role === 'manager') && (
+                                <button
+                                    onClick={() => setShowReceiveStock(true)}
+                                    className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors"
+                                >Receive stock</button>
+                            )}
+                            {(shift.role === 'owner' || shift.role === 'manager') && (
+                                <button
+                                    onClick={() => setShowRecordPayment(true)}
+                                    className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors"
+                                >Record payment</button>
+                            )}
                             <button
                                 onClick={() => setShowPrinter(true)}
                                 className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors"
@@ -323,6 +383,20 @@ export function RetailTill({
 
                     {showPrinter && <PrinterSettings onClose={() => setShowPrinter(false)} />}
                     {showTasks   && <TasksPanel cashierId={shift.cashierId} onClose={() => setShowTasks(false)} />}
+                    {showReceiveStock && (
+                        <ReceiveStock
+                            branchId={device.branch.id}
+                            products={products}
+                            stockRows={stockRows}
+                            onClose={() => setShowReceiveStock(false)}
+                        />
+                    )}
+                    {showRecordPayment && (
+                        <RecordPayment
+                            customers={customers}
+                            onClose={() => setShowRecordPayment(false)}
+                        />
+                    )}
 
                     {/* Search + scan */}
                     <div className="px-5 pt-4 pb-3 flex gap-2">
@@ -388,12 +462,13 @@ export function RetailTill({
                         ) : (
                             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
                                 {visible.map((p, i) => {
-                                    const qty = stock.get(p.id);
-                                    const out = p.track_stock && qty !== undefined && qty <= 0;
+                                    const available = availableFor(p, stock);
+                                    const out = available === 0;
+                                    const left = available === undefined ? undefined : available - qtyInCart(cart, p.id);
                                     return (
                                         <button
                                             key={p.id}
-                                            onClick={() => !out && setCart((c) => addProduct(c, p))}
+                                            onClick={() => tryAdd(p)}
                                             disabled={out}
                                             className="product-card product-card-retail flex flex-col rounded-2xl bg-white/5 p-3.5 text-left ring-1 ring-white/8 disabled:opacity-40 anim-pop-in"
                                             style={{ animationDelay: `${Math.min(i * 20, 200)}ms` }}
@@ -408,7 +483,7 @@ export function RetailTill({
                       </span>
                                             {p.track_stock && (
                                                 <span className={`mt-1 text-[10px] font-medium ${out ? 'text-red-400' : 'text-slate-500'}`}>
-                          {out ? 'Out of stock' : `${qty ?? 0} in stock`}
+                          {out ? 'Out of stock' : left === 0 ? `All ${available} in cart` : `${available} in stock`}
                         </span>
                                             )}
                                         </button>
@@ -421,7 +496,7 @@ export function RetailTill({
 
                 {/* ── RIGHT: Cart — desktop sidebar ──────────────────────────── */}
                 <aside className="sidebar-retail hidden border-l border-white/6 lg:flex lg:w-96 lg:flex-col">
-                    <CartContent />
+                    {renderCart()}
                 </aside>
 
                 {/* ── Mobile floating pill ──────────────────────────────────── */}
@@ -449,7 +524,7 @@ export function RetailTill({
                                 <div className="h-1 w-10 rounded-full bg-white/15" />
                             </div>
                             <div className="max-h-[calc(88vh-24px)] overflow-y-auto dark-scroll">
-                                <CartContent />
+                                {renderCart()}
                             </div>
                         </div>
                     </div>

@@ -24,6 +24,7 @@ export default function Nav() {
           <a href="#features" className="hover:text-ink transition-colors">Features</a>
           <a href="#pricing" className="hover:text-ink transition-colors">Pricing</a>
           <a href="#faq" className="hover:text-ink transition-colors">FAQ</a>
+          <a href="#install" className="hover:text-ink transition-colors">Install till</a>
         </nav>
         <div className="flex items-center gap-3">
           <DarkModeToggle />

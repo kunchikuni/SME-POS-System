@@ -1,7 +1,7 @@
 /**
- * The wire contract with App\Domain\Pos\SyncService. These types mirror the
- * server's JSON exactly — field names, nullability, and units — so a mismatch
- * is a compile error here, not a lost sale in the field.
+ * The wire contract with server/src/domain/pos/syncService.ts. These types
+ * mirror the server's JSON exactly — field names, nullability, and units —
+ * so a mismatch is a compile error here, not a lost sale in the field.
  *
  * Money is always integer minor units (`*_cents`). Ids are client-generated
  * UUIDs on everything the till writes, which is what makes push idempotent and
@@ -10,8 +10,37 @@
 
 export type ProductType = 'retail' | 'restaurant';
 
-/** A tender label, recorded for the merchant's reporting. Wivae never processes it. */
-export type PaymentMethod = 'cash' | 'ecocash' | 'innbucks' | 'omari' | 'onemoney' | 'zipit' | 'other';
+/**
+ * A tender label, recorded for the merchant's reporting. Wivae never processes it.
+ * 'credit' is the exception that moves no money: the amount is added to the
+ * sale's customer's balance (see SalePayload.customer and applySale).
+ */
+export type PaymentMethod = 'cash' | 'ecocash' | 'innbucks' | 'omari' | 'onemoney' | 'zipit' | 'other' | 'credit';
+
+/**
+ * Someone who buys on credit. Tenant-wide, not per-branch: one customer can
+ * owe across branches. `balance_cents` is what they owe (negative = in credit,
+ * i.e. overpaid) — the server's figure on sync, bumped locally on this till
+ * by credit sales and repayments until the next pull replaces it.
+ */
+export interface Customer {
+    id: string;
+    name: string;
+    phone: string | null;
+    balance_cents: number;
+}
+
+/** A customer change delivered via pull; `removed` means deleted in the dashboard. */
+export interface CustomerSyncEntry extends Customer {
+    removed: boolean;
+}
+
+/** Who a credit sale is owed by. May be brand new — the server upserts it by id. */
+export interface SaleCustomer {
+    id: string;
+    name: string;
+    phone: string | null;
+}
 
 // ── Catalog (server-authoritative, flows dashboard → till via pull) ──────────
 
@@ -111,18 +140,52 @@ export interface SalePayload {
     occurred_at: string;
     lines: SaleLinePayload[];
     payments: PaymentPayload[];
+    /** Required when any payment is 'credit' — the server rejects a credit sale without one. */
+    customer?: SaleCustomer | null;
 }
 
 // ── Mutations (the push envelope) ────────────────────────────────────────────
 
-export type MutationType = 'sale.create';
+export type MutationType = 'sale.create' | 'stock.receive' | 'debt.repay';
 
 export interface SaleCreateMutation {
     type: 'sale.create';
     sale: SalePayload;
 }
 
-export type Mutation = SaleCreateMutation;
+/**
+ * Offline restocking — the till-side counterpart to the dashboard's
+ * POST /products/:id/restock. Same underlying effect (a 'purchase' stock
+ * movement, positive delta), but queued through the outbox so a delivery
+ * can be received without a live connection, the same way a sale can be rung
+ * up without one. `id` is the client-generated movement UUID and doubles as
+ * the idempotency key, exactly like SaleLine.movement_id.
+ */
+export interface StockReceiveMutation {
+    type: 'stock.receive';
+    id: string;
+    product_id: string;
+    branch_id: string;
+    qty: number;
+    /** ISO-8601; when the delivery was actually received, possibly offline. */
+    occurred_at: string;
+}
+
+/**
+ * A customer paying off (some of) what they owe, recorded at the till —
+ * offline-capable like a sale. `id` is the CustomerPayment ledger row's id and
+ * the idempotency key. Lands in syncService.applyDebtRepayment.
+ */
+export interface DebtRepayMutation {
+    type: 'debt.repay';
+    id: string;
+    customer_id: string;
+    amount_cents: number;
+    method: Exclude<PaymentMethod, 'credit'>;
+    occurred_at: string;
+}
+
+export type Mutation = SaleCreateMutation | StockReceiveMutation | DebtRepayMutation;
 
 // ── Endpoint payloads ────────────────────────────────────────────────────────
 
@@ -133,6 +196,7 @@ export interface BootstrapResponse {
     stock: StockLevel[];
     staff: StaffMember[];
     tables: Omit<Table, 'is_active'>[];
+    customers: Customer[];
 }
 
 export interface PullResponse {
@@ -142,6 +206,7 @@ export interface PullResponse {
     stock: StockLevel[];
     tables: Table[];
     staff: StaffSyncEntry[];
+    customers: CustomerSyncEntry[];
 }
 
 export interface PushResponse {
@@ -150,7 +215,7 @@ export interface PushResponse {
     cursor: string;
 }
 
-export type TenantMode = 'retail' | 'restaurant';
+export type TenantMode = 'retail' | 'restaurant' | 'hardware' | 'workshop';
 
 export interface SessionResponse {
     device: { id: string; name: string };

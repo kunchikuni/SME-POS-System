@@ -33,7 +33,13 @@ exportRoutes.get('/export', async (ctx) => {
   const t = ctx.get('tenant');
   const products = await db.product.findMany({
     where: { tenantId: t.id, deletedAt: null },
-    include: { category: { select: { name: true } }, stockLevels: { select: { quantity: true } } },
+    // on_hand = live branches only, same as the Products page. The importer
+    // never reads on_hand (only initial_qty, for new SKUs), so this doesn't
+    // affect the export→edit→reimport round trip.
+    include: {
+      category: { select: { name: true } },
+      stockLevels: { where: { branch: { deletedAt: null } }, select: { quantity: true } },
+    },
     orderBy: { name: 'asc' },
   });
 

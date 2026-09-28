@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, ApiError, OfflineError } from '../sync/apiClient';
 import { clearSession, saveSession, type DeviceSession } from '../sync/session';
+import { InstallAppCard } from './Shared';
 
 /**
  * One-time device provisioning. The operator enters (or scans) the token
@@ -99,6 +100,8 @@ export function PairDevice({ onPaired }: { onPaired: (session: DeviceSession) =>
             {busy ? 'Pairing…' : 'Pair device'}
           </button>
         </div>
+
+        <InstallAppCard />
       </div>
     </div>
   );

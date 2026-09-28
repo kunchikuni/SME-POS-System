@@ -5,7 +5,7 @@ import { MissingPinHashError, verifyPin } from '../pos/pin';
 import { startShift, type Shift } from '../pos/shift';
 import type { StaffMember } from '../types/contract';
 import type { DeviceSession } from '../sync/session';
-import { SyncBadge } from './Shared';
+import { InstallAppCard, SyncBadge } from './Shared';
 
 const PIN_LENGTH = 4;
 
@@ -98,6 +98,9 @@ export function ShiftLogin({ device, onStart }: { device: DeviceSession; onStart
               </div>
             </button>
           ))}
+        </div>
+        <div className="mx-auto max-w-md">
+          <InstallAppCard />
         </div>
       </div>
     </div>
