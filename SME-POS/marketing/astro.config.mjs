@@ -23,5 +23,11 @@ export default defineConfig({
   },
   vite: {
     plugins: [tailwindcss()],
+    // Dev only: in production the marketing build is served same-origin with
+    // the API (config.ts's API_URL defaults to /api). Without this, /api calls
+    // from :4321 (tenant lookup, enquiry form) hit Astro's dev server and 404.
+    server: {
+      proxy: { "/api": { target: "http://localhost:3000", changeOrigin: false } },
+    },
   },
 });

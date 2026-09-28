@@ -172,6 +172,13 @@ export function Receipt({
                             )}
                         </div>
                     ))}
+                    {/* Who owes a credit sale — the receipt is the customer's record of the debt. */}
+                    {sale.customer && (
+                        <div className="flex justify-between text-sm text-slate-700">
+                            <span>On account</span>
+                            <span className="font-medium">{sale.customer.name}</span>
+                        </div>
+                    )}
 
                     {/* Tax breakdown — single row today (one tenant-wide VAT rate); see
               docblock in escpos.ts if this ever needs per-line tax codes. */}

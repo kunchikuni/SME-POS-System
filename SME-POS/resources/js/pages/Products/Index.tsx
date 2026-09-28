@@ -13,12 +13,29 @@ export default function ProductsIndex() {
   const [page, setPage] = useState(1);
   const [restocking, setRestocking] = useState<string | null>(null);
   const [restockQty, setRestockQty] = useState(1);
+  const [restockBranchId, setRestockBranchId] = useState<string>("");
+  // "" = all branches. Kept in the URL so a filtered view survives reloads.
+  const [branchFilter, setBranchFilter] = useState(searchParams.get("branch") ?? "");
   const { flash, showFlash } = useFlash();
 
   const { data, loading, refetch } = useQuery(
-    () => api.products.list({ q, page: String(page) }),
-    [q, page],
+    () => api.products.list({ q, page: String(page), ...(branchFilter ? { branchId: branchFilter } : {}) }),
+    [q, page, branchFilter],
   );
+
+  // Live branches, default first — returned with the list, so the filter,
+  // the per-branch split and the restock picker all agree on one set.
+  const branches = data?.branches ?? [];
+  const multiBranch = branches.length > 1;
+  const filterName = branches.find((b) => b.id === branchFilter)?.name;
+
+  function changeBranchFilter(id: string) {
+    setBranchFilter(id);
+    setPage(1);
+    const next = new URLSearchParams(searchParams);
+    if (id) next.set("branch", id); else next.delete("branch");
+    setSearchParams(next, { replace: true });
+  }
 
   const { submit: deleteProduct } = useMutation(
     (id: string) => api.products.delete(id),
@@ -26,13 +43,49 @@ export default function ProductsIndex() {
   );
 
   const { submit: restock } = useMutation(
-    ({ id, qty }: { id: string; qty: number }) => api.products.restock(id, qty),
-    { onSuccess: () => { showFlash("Stock updated."); setRestocking(null); refetch(); } },
+    ({ id, qty, branchId }: { id: string; qty: number; branchId?: string }) =>
+      api.products.restock(id, qty, branchId || undefined),
+    { onSuccess: (r) => { showFlash(r?.message ?? "Stock updated."); setRestocking(null); refetch(); } },
   );
 
   const products = data?.data ?? [];
   const total = data?.total ?? 0;
   const perPage = data?.perPage ?? 50;
+
+  function openRestock(id: string) {
+    setRestocking(id);
+    setRestockQty(1);
+    // Explicit branch, never an unnamed "default": the one being viewed, or
+    // the default branch (first in the list) in the all-branches view.
+    setRestockBranchId(branchFilter || branches[0]?.id || "");
+  }
+
+  // ── Stock count (stock take) ───────────────────────────────────────────
+  const [counting, setCounting] = useState<string | null>(null);
+  const [countQty, setCountQty] = useState("");
+  const [countBranchId, setCountBranchId] = useState("");
+
+  const { submit: submitCount, loading: countSaving, error: countError } = useMutation(
+    ({ id, counted, branchId }: { id: string; counted: number; branchId?: string }) =>
+      api.products.count(id, counted, branchId || undefined),
+    { onSuccess: (r) => { showFlash(r?.message ?? "Stock count saved."); setCounting(null); refetch(); } },
+  );
+
+  function openCount(id: string) {
+    setCounting(id);
+    setCountQty("");
+    setCountBranchId(branchFilter || branches[0]?.id || "");
+  }
+
+  const countProduct = products.find((p) => p.id === counting);
+  // Single-branch tenants have no picker; their one level is the product's onHand.
+  const countSystemQty = multiBranch
+    ? countProduct?.byBranch.find((b) => b.branchId === countBranchId)?.qty ?? 0
+    : countProduct?.onHand ?? 0;
+  const countValue = countQty === "" ? null : parseInt(countQty, 10);
+
+  const restockProduct = products.find((p) => p.id === restocking);
+  const restockCurrent = restockProduct?.byBranch.find((b) => b.branchId === restockBranchId)?.qty ?? 0;
 
   return (
     <AppLayout>
@@ -58,8 +111,8 @@ export default function ProductsIndex() {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="mt-4">
+      {/* Search + branch filter */}
+      <div className="mt-4 flex flex-wrap gap-2">
         <input
           type="search"
           value={q}
@@ -67,6 +120,19 @@ export default function ProductsIndex() {
           placeholder="Search by name, SKU, or barcode…"
           className="w-full max-w-sm rounded-xl border border-hairline bg-surface px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500/20"
         />
+        {multiBranch && (
+          <select
+            value={branchFilter}
+            onChange={(e) => changeBranchFilter(e.target.value)}
+            aria-label="Branch"
+            className="rounded-xl border border-hairline bg-surface px-3 py-2 text-sm"
+          >
+            <option value="">All branches</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {loading ? (
@@ -81,7 +147,9 @@ export default function ProductsIndex() {
                   <th className="px-4 py-3">SKU</th>
                   <th className="px-4 py-3">Category</th>
                   <th className="px-4 py-3 text-right">Price</th>
-                  <th className="px-4 py-3 text-right">On Hand</th>
+                  <th className="px-4 py-3 text-right">
+                    On Hand{multiBranch && <span className="normal-case tracking-normal"> · {filterName ?? "all branches"}</span>}
+                  </th>
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
@@ -102,14 +170,28 @@ export default function ProductsIndex() {
                       <span className={`tabular-nums font-semibold ${p.lowStock ? "text-red-600" : "text-ink"}`}>
                         {p.onHand}
                       </span>
+                      {/* All-branches view: show where the stock actually is,
+                          so a total can't hide one branch running out. */}
+                      {multiBranch && !branchFilter && p.tracked && p.byBranch.length > 0 && (
+                        <p className="mt-0.5 text-[11px] text-muted">
+                          {p.byBranch.map((b) => `${b.branch} ${b.qty}`).join(" · ")}
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
                         {p.tracked && (
                           <button
-                            onClick={() => setRestocking(p.id)}
+                            onClick={() => openRestock(p.id)}
                             className="rounded-lg border border-hairline px-2 py-1 text-xs hover:bg-canvas"
                           >Restock</button>
+                        )}
+                        {p.tracked && (
+                          <button
+                            onClick={() => openCount(p.id)}
+                            title="Stock take — set to what's actually on the shelf"
+                            className="rounded-lg border border-hairline px-2 py-1 text-xs hover:bg-canvas"
+                          >Count</button>
                         )}
                         <button
                           onClick={() => { if (confirm(`Delete ${p.name}?`)) deleteProduct(p.id); }}
@@ -134,15 +216,94 @@ export default function ProductsIndex() {
         </>
       )}
 
+      {/* Stock count modal */}
+      {counting && countProduct && (
+        <Modal title="Stock count" onClose={() => setCounting(null)}>
+          <p className="mb-3 text-sm text-muted">
+            How many <span className="font-medium text-ink">{countProduct.name}</span> are physically there? The level is set to this
+            and the difference is recorded as an adjustment in the stock history.
+          </p>
+
+          {multiBranch && (
+            <div className="mb-3">
+              <label className="mb-1 block text-xs font-medium text-muted">Branch</label>
+              <select
+                value={countBranchId}
+                onChange={(e) => setCountBranchId(e.target.value)}
+                className="w-full rounded-xl border border-hairline px-3 py-2 text-sm"
+              >
+                {branches.map((b, i) => (
+                  <option key={b.id} value={b.id}>{b.name}{i === 0 ? " (default)" : ""}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <label className="mb-1 block text-xs font-medium text-muted">Counted quantity</label>
+          <input
+            type="number"
+            min={0}
+            autoFocus
+            value={countQty}
+            onChange={(e) => setCountQty(e.target.value.replace(/[^0-9]/g, ""))}
+            className="w-full rounded-xl border border-hairline px-3 py-2 text-sm"
+          />
+          <p className="mt-1 text-xs text-muted">
+            System says <span className={countSystemQty < 0 ? "font-semibold text-red-600" : ""}>{countSystemQty}</span>
+            {countValue !== null && !Number.isNaN(countValue) && (
+              <> → {countValue} ({countValue - countSystemQty === 0 ? "no change" : `${countValue - countSystemQty > 0 ? "+" : ""}${countValue - countSystemQty}`})</>
+            )}
+          </p>
+          {countError && <p className="mt-2 text-xs text-red-600">{countError}</p>}
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button onClick={() => setCounting(null)} className="btn-secondary text-sm">Cancel</button>
+            <button
+              disabled={countSaving || countValue === null || Number.isNaN(countValue)}
+              onClick={() => countValue !== null && submitCount({ id: countProduct.id, counted: countValue, branchId: countBranchId })}
+              className="btn-primary text-sm disabled:opacity-50"
+            >{countSaving ? "Saving…" : "Save count"}</button>
+          </div>
+        </Modal>
+      )}
+
       {/* Restock modal */}
       {restocking && (
         <Modal title="Restock" onClose={() => setRestocking(null)}>
-          <p className="text-sm text-muted mb-3">Enter qty to add to stock.</p>
+          <p className="text-sm text-muted mb-3">
+            Enter qty to add to stock{restockProduct ? ` for ${restockProduct.name}` : ""}.
+          </p>
           <input type="number" min={1} value={restockQty} onChange={(e) => setRestockQty(Number(e.target.value))}
             className="w-full rounded-xl border border-hairline px-3 py-2 text-sm" />
+
+          {/* Only shown for multi-branch tenants — single-branch tenants keep
+              the one-field flow and land on their only branch. Every option
+              is a named branch (no anonymous "Default branch"), preselected
+              to the branch being viewed. */}
+          {multiBranch && (
+            <div className="mt-3">
+              <label className="mb-1 block text-xs font-medium text-muted">Branch</label>
+              <select
+                value={restockBranchId}
+                onChange={(e) => setRestockBranchId(e.target.value)}
+                className="w-full rounded-xl border border-hairline px-3 py-2 text-sm"
+              >
+                {branches.map((b, i) => (
+                  <option key={b.id} value={b.id}>{b.name}{i === 0 ? " (default)" : ""}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-muted">
+                Currently {restockCurrent} there → {restockCurrent + (restockQty > 0 ? restockQty : 0)} after restock.
+              </p>
+            </div>
+          )}
+
           <div className="mt-4 flex justify-end gap-2">
             <button onClick={() => setRestocking(null)} className="btn-secondary text-sm">Cancel</button>
-            <button onClick={() => restock({ id: restocking, qty: restockQty })} className="btn-primary text-sm">Confirm</button>
+            <button
+              onClick={() => restock({ id: restocking, qty: restockQty, branchId: restockBranchId })}
+              className="btn-primary text-sm"
+            >Confirm</button>
           </div>
         </Modal>
       )}

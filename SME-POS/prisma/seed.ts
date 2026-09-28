@@ -35,6 +35,11 @@ const MANAGER_EMAIL = 'manager@demo.test';
 const MANAGER_PASSWORD = 'password';
 const DEVICE_TOKEN = 'demo-device-token'; // fixed in dev so the PWA can authenticate without provisioning
 const CASHIER_PIN = '1234';
+// Owner/manager till PINs — without one they never reach the till (bootstrap
+// only ships staff with a pinHash), so owner/manager-only till actions like
+// Receive stock and Record payment would be unreachable in the demo.
+const OWNER_PIN = '0000';
+const MANAGER_PIN = '5678';
 
 async function main() {
   const existing = await db.tenant.findUnique({ where: { subdomain: SUBDOMAIN } });
@@ -55,14 +60,9 @@ async function main() {
       id: tenantId,
       name: 'Demo Store',
       subdomain: SUBDOMAIN,
-      // Use 'trial' so hasAccess() passes without needing a subscription row.
-      // A 'standard' plan with no subscription immediately returns 402 on every
-      // dashboard API call (ensureSubscribed uses entitlementService.hasAccess).
-      plan: 'trial',
+      plan: 'standard',
       status: 'active',
       taxRateBps: 1500,
-      // 1 year from seed time — plenty of runway for a demo environment.
-      trialEndsAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
     },
   });
 
@@ -78,6 +78,7 @@ async function main() {
       name: 'Demo Owner',
       email: OWNER_EMAIL,
       password: await bcrypt.hash(OWNER_PASSWORD, 12),
+      pinHash: await bcrypt.hash(OWNER_PIN, 10),
       role: 'owner',
     },
   });
@@ -186,6 +187,7 @@ async function seedStaff(tenantId: string, branchId: string) {
       name: 'Grace (Manager)',
       email: MANAGER_EMAIL,
       password: await bcrypt.hash(MANAGER_PASSWORD, 12),
+      pinHash: await bcrypt.hash(MANAGER_PIN, 10),
       role: 'manager',
     },
   });

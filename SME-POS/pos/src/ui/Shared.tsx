@@ -3,6 +3,7 @@ import { useSyncStatus } from './useSyncStatus';
 import { syncManager } from '../sync/syncManager';
 import type { TenantMode } from '../types/contract';
 import { getAppTheme, setAppTheme, type AppTheme } from '../pos/appTheme';
+import { promptInstall, useInstallState } from '../pwa/installPrompt';
 
 /** Live connectivity + outbox indicator, shown in the till header. */
 export function SyncBadge() {
@@ -321,128 +322,140 @@ export function ModePill({ mode }: { mode: TenantMode }) {
     );
 }
 
-interface BeforeInstallPromptEvent extends Event {
-    prompt(): Promise<void>;
-    userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
-}
-
 /**
- * PWA Install button.
- * - Detects standalone display mode (hidden if already running installed).
- * - On Chromium / Android: triggers native beforeinstallprompt.
- * - On iOS / Safari: displays an instructional popup showing how to "Add to Home Screen".
- * - On other desktop browsers: displays clear guide instructions.
+ * Compact install button for the till header.
+ * - Hidden when already running as the installed app.
+ * - Chromium / Android / desktop: opens the native install dialog, using the
+ *   offer captured at startup (pwa/installPrompt.ts) — not a listener of its
+ *   own, which used to miss the one-time event on most page loads.
+ * - iOS / browsers without a native offer: shows how to install manually.
  */
 export function InstallAppButton() {
-    const [promptEvent, setPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
-    const [isStandalone, setIsStandalone] = useState(false);
-    const [showHelpModal, setShowHelpModal] = useState(false);
-    const [isIos, setIsIos] = useState(false);
+    const install = useInstallState();
+    const [showHelp, setShowHelp] = useState(false);
 
-    useEffect(() => {
-        const standalone =
-            window.matchMedia('(display-mode: standalone)').matches ||
-            (window.navigator as unknown as { standalone?: boolean }).standalone === true;
-        setIsStandalone(standalone);
+    if (install.standalone) return null;
 
-        const ua = window.navigator.userAgent.toLowerCase();
-        setIsIos(/iphone|ipad|ipod/.test(ua));
-
-        function onBeforeInstall(e: Event) {
-            e.preventDefault();
-            setPromptEvent(e as BeforeInstallPromptEvent);
-        }
-
-        window.addEventListener('beforeinstallprompt', onBeforeInstall);
-        return () => window.removeEventListener('beforeinstallprompt', onBeforeInstall);
-    }, []);
-
-    if (isStandalone) return null;
-
-    const handleInstallClick = async () => {
-        if (promptEvent) {
-            await promptEvent.prompt();
-            const choice = await promptEvent.userChoice;
-            if (choice.outcome === 'accepted') {
-                setPromptEvent(null);
-            }
-        } else {
-            setShowHelpModal(true);
-        }
-    };
+    async function onClick() {
+        if (!(await promptInstall())) setShowHelp(true);
+    }
 
     return (
         <>
             <button
                 type="button"
-                onClick={handleInstallClick}
+                onClick={() => void onClick()}
                 className="flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 px-2.5 py-1 text-xs font-semibold text-blue-300 shadow-sm transition-all hover:bg-blue-500/20 active:scale-95"
                 title="Install Wivae POS as a standalone app"
             >
                 <span className="text-sm">📲</span>
                 <span className="hidden sm:inline">Install</span>
             </button>
-
-            {showHelpModal && (
-                <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm anim-fade-in"
-                    onClick={() => setShowHelpModal(false)}
-                >
-                    <div
-                        className="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-900 p-6 text-slate-200 shadow-2xl"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                            <h3 className="text-base font-bold text-white flex items-center gap-2">
-                                <span>📲</span> Install Wivae POS
-                            </h3>
-                            <button
-                                onClick={() => setShowHelpModal(false)}
-                                className="text-slate-400 hover:text-white text-sm"
-                            >
-                                ✕
-                            </button>
-                        </div>
-
-                        {isIos ? (
-                            <div className="mt-4 space-y-3 text-xs leading-relaxed text-slate-300">
-                                <p className="font-medium text-white">To install on iPhone / iPad:</p>
-                                <ol className="list-decimal list-inside space-y-2 pl-1">
-                                    <li>
-                                        Tap the <strong>Share</strong> button (the square icon with an arrow pointing up) in Safari.
-                                    </li>
-                                    <li>
-                                        Scroll down in the share sheet and tap <strong>Add to Home Screen</strong>.
-                                    </li>
-                                    <li>Tap <strong>Add</strong> in the top right corner.</li>
-                                </ol>
-                            </div>
-                        ) : (
-                            <div className="mt-4 space-y-3 text-xs leading-relaxed text-slate-300">
-                                <p className="font-medium text-white">To install on Desktop / Android:</p>
-                                <ol className="list-decimal list-inside space-y-2 pl-1">
-                                    <li>
-                                        Look at the <strong>address bar</strong> in your browser for the <strong>Install</strong> icon (computer with down arrow).
-                                    </li>
-                                    <li>
-                                        Or open browser menu (<strong>⋮</strong>) → <strong>Cast, save and share</strong> → <strong>Install Wivae POS</strong>.
-                                    </li>
-                                </ol>
-                            </div>
-                        )}
-
-                        <div className="mt-5 flex justify-end">
-                            <button
-                                type="button"
-                                onClick={() => setShowHelpModal(false)}
-                                className="rounded-xl bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-500"
-                            >
-                                Got it
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {showHelp && <InstallHelpModal ios={install.ios} onClose={() => setShowHelp(false)} />}
         </>
+    );
+}
+
+/**
+ * Prominent install card for the entry screens (pairing, PIN login) — the
+ * first thing someone sees after arriving from the marketing site's "Install
+ * the till app" link, so the install happens before setup rather than being
+ * buried in the till header. Highlighted when that link brought them here
+ * (?install=1). Hidden once installed.
+ */
+export function InstallAppCard() {
+    const install = useInstallState();
+    const [showHelp, setShowHelp] = useState(false);
+
+    if (install.standalone) return null;
+
+    async function onClick() {
+        if (!(await promptInstall())) setShowHelp(true);
+    }
+
+    return (
+        <>
+            <div
+                className={`mt-4 flex items-center gap-3 rounded-2xl p-4 text-left ring-1 ${
+                    install.requested ? 'bg-blue-500/15 ring-blue-400/40' : 'bg-white/5 ring-white/10'
+                }`}
+            >
+                <span className="text-2xl" aria-hidden>📲</span>
+                <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-white">Install the till app</p>
+                    <p className="text-xs text-slate-400">
+                        Opens full-screen from your home screen and works offline.
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => void onClick()}
+                    className="shrink-0 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500 active:scale-95"
+                >
+                    {install.canPrompt ? 'Install' : 'How to install'}
+                </button>
+            </div>
+            {showHelp && <InstallHelpModal ios={install.ios} onClose={() => setShowHelp(false)} />}
+        </>
+    );
+}
+
+function InstallHelpModal({ ios, onClose }: { ios: boolean; onClose: () => void }) {
+    return (
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm anim-fade-in"
+            onClick={onClose}
+        >
+            <div
+                className="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-900 p-6 text-left text-slate-200 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                        <span>📲</span> Install Wivae POS
+                    </h3>
+                    <button onClick={onClose} className="text-slate-400 hover:text-white text-sm">
+                        ✕
+                    </button>
+                </div>
+
+                {ios ? (
+                    <div className="mt-4 space-y-3 text-xs leading-relaxed text-slate-300">
+                        <p className="font-medium text-white">To install on iPhone / iPad:</p>
+                        <ol className="list-decimal list-inside space-y-2 pl-1">
+                            <li>
+                                Tap the <strong>Share</strong> button (the square icon with an arrow pointing up) in Safari.
+                            </li>
+                            <li>
+                                Scroll down in the share sheet and tap <strong>Add to Home Screen</strong>.
+                            </li>
+                            <li>Tap <strong>Add</strong> in the top right corner.</li>
+                        </ol>
+                    </div>
+                ) : (
+                    <div className="mt-4 space-y-3 text-xs leading-relaxed text-slate-300">
+                        <p className="font-medium text-white">To install on Desktop / Android:</p>
+                        <ol className="list-decimal list-inside space-y-2 pl-1">
+                            <li>
+                                Look at the <strong>address bar</strong> in your browser for the <strong>Install</strong> icon (computer with down arrow).
+                            </li>
+                            <li>
+                                Or open browser menu (<strong>⋮</strong>) → <strong>Cast, save and share</strong> → <strong>Install Wivae POS</strong>.
+                            </li>
+                        </ol>
+                    </div>
+                )}
+
+                <div className="mt-5 flex justify-end">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-xl bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-500"
+                    >
+                        Got it
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 }

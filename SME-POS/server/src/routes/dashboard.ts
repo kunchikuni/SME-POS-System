@@ -13,7 +13,7 @@ dashboardRoutes.get('/', async (ctx) => {
     db.sale.aggregate({ where: { tenantId: t.id, status: 'completed', occurredAt: { gte: today }, deletedAt: null }, _sum: { totalCents: true }, _count: true }),
     db.sale.aggregate({ where: { tenantId: t.id, status: 'completed', occurredAt: { gte: monthStart }, deletedAt: null }, _sum: { totalCents: true }, _count: true }),
     db.product.count({ where: { tenantId: t.id, isActive: true, deletedAt: null } }),
-    db.product.count({ where: { tenantId: t.id, trackStock: true, deletedAt: null, stockLevels: { some: { quantity: { lte: 0 } } } } }),
+    db.product.count({ where: { tenantId: t.id, trackStock: true, deletedAt: null, stockLevels: { some: { quantity: { lte: 0 }, branch: { deletedAt: null } } } } }), // live branches only — a removed branch's stock isn't "low"
     db.task.count({ where: { tenantId: t.id, status: 'open', deletedAt: null } }),
   ]);
 

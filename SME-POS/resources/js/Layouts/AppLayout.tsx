@@ -39,6 +39,7 @@ export default function AppLayout({ children }: PropsWithChildren) {
     { label: "Inventory", href: "/products", icon: <IconBox />, match: (u) => u.startsWith("/products") || u.startsWith("/categories") },
     { label: "Orders", href: "/orders", icon: <IconClipboard />, match: (u) => u.startsWith("/orders") },
     { label: "Transactions", href: "/transactions", icon: <IconReceipt />, match: (u) => u.startsWith("/transactions") },
+    { label: "Customers", href: "/customers", icon: <IconUsers />, match: (u) => u.startsWith("/customers") },
     { label: "Reports", href: "/analytics", icon: <IconChart />, match: (u) => u.startsWith("/analytics") },
     { label: "AI Insights", href: "/ai-insights", icon: <IconSparkle />, match: (u) => u.startsWith("/ai-insights") },
     { label: "Staff Management", href: "/staff", icon: <IconUsers />, match: (u) => u.startsWith("/staff") },

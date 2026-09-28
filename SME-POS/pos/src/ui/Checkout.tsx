@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { formatMoney, taxOf, toCents } from '../lib/money';
 import { cartTotals, type Cart } from '../pos/cart';
-import { completeSale } from '../pos/checkout';
+import { completeSale, saleErrorMessage } from '../pos/checkout';
 import type { PaymentMethod, SalePayload } from '../types/contract';
+import { CreditCustomerFields, useCreditCustomer } from './CreditCustomer';
 
 // The Zimbabwean tender rails a till actually sees at the counter.
 const METHODS: { value: PaymentMethod; label: string; icon: string }[] = [
@@ -12,6 +13,7 @@ const METHODS: { value: PaymentMethod; label: string; icon: string }[] = [
     { value: 'omari',    label: 'Omari',    icon: '💳' },
     { value: 'onemoney', label: 'OneMoney', icon: '📲' },
     { value: 'zipit',    label: 'ZIPIT',    icon: '⚡' },
+    { value: 'credit',   label: 'Credit',   icon: '📒' },
 ];
 
 // Tip presets in basis points; -1 is the "custom amount" sentinel.
@@ -63,6 +65,7 @@ export function Checkout({
     // up. Independent of table selection: a Counter order (no table) can still
     // need the kitchen, same as a table order can skip it.
     const [routeToKitchen, setRouteToKitchen] = useState(true);
+    const credit = useCreditCustomer();
 
     const gratuity = !showGratuity
         ? 0
@@ -89,11 +92,13 @@ export function Checkout({
                 tableId,
                 routeToKitchen,
                 gratuityCents: gratuity,
+                // The whole amount incl. any tip goes on account, like any other tender.
+                customer: method === 'credit' ? credit.toSaleCustomer() : null,
                 tenantRateBps,
             });
             onComplete(sale);
-        } catch {
-            setError('Couldn’t save the sale. Please try again.');
+        } catch (err) {
+            setError(saleErrorMessage(err));
             setBusy(false);
         }
     }
@@ -240,6 +245,10 @@ export function Checkout({
                             </p>
                         )}
                     </div>
+                )}
+
+                {method === 'credit' && (
+                    <CreditCustomerFields credit={credit} focusRing="focus:border-orange-500/50 focus:ring-orange-500/20" />
                 )}
 
                 {error && <p className="mt-4 text-sm text-red-400">{error}</p>}

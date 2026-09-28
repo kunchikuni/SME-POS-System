@@ -1,13 +1,22 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "../../lib/api.js";
 import { useAuth } from "../../lib/auth.js";
 import { usePageTitle } from "../../lib/hooks.js";
+
+/** Only same-app paths — never "//evil.com" or an absolute URL (open redirect). */
+function safeRedirect(target: string | null): string {
+  if (!target || !target.startsWith("/") || target.startsWith("//") || target.startsWith("/login")) {
+    return "/dashboard";
+  }
+  return target;
+}
 
 export default function Login() {
   usePageTitle("Sign in");
   const { refetch } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,11 +36,15 @@ export default function Login() {
     try {
       await api.auth.login(email, password);
       await refetch();
-      navigate("/dashboard", { replace: true });
+      navigate(safeRedirect(searchParams.get("redirectTo")), { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.status === 422) {
         const body = err.body as Record<string, string>;
-        setErrors({ email: body.email, password: body.password });
+        if (body.email || body.password) {
+          setErrors({ email: body.email, password: body.password });
+        } else {
+          setErrors({ general: body.message ?? "These credentials do not match our records." });
+        }
       } else if (err instanceof ApiError && err.status === 401) {
         setErrors({ general: "These credentials do not match our records." });
       } else {

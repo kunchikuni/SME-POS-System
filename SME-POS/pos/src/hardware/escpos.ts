@@ -136,6 +136,10 @@ export function encodeReceipt(context: ReceiptContext, options: EncodeOptions = 
             b.line(row('Change', formatMoney(payment.received_cents - payment.amount_cents, payment.currency), columns));
         }
     }
+    // Who owes a credit sale — the receipt is the customer's record of the debt.
+    if (sale.customer) {
+        b.line(row('On account', sale.customer.name, columns));
+    }
 
     // Tax breakdown — a single row today, since every product currently shares
     // one tenant-wide VAT rate (Product.tax_class isn't yet captured per sale

@@ -78,6 +78,7 @@ interface PushMutation {
 
 /** Full snapshot for a newly provisioned device. */
 export async function bootstrap(tenantId: string, branchId: string) {
+    const next = nextCursor(); // before the queries — see nextCursor()
     const [categories, products, stock, staff, tables, customers] = await Promise.all([
         db.category.findMany({
             where: { tenantId, deletedAt: null },
@@ -133,7 +134,7 @@ export async function bootstrap(tenantId: string, branchId: string) {
     ]);
 
     return {
-        cursor: new Date().toISOString(),
+        cursor: next,
         categories,
         products: products.map((p: typeof products[number]) => ({
             id: p.id,
@@ -216,6 +217,7 @@ export async function push(
                         occurred_at: mutation.occurred_at,
                     },
                     tenantId,
+                    branchId,
                 );
                 if (id) acked.push(id);
             } else if (
@@ -256,9 +258,31 @@ export async function push(
     return { acked, cursor: new Date().toISOString() };
 }
 
+/**
+ * The cursor to hand back from a bootstrap/pull: taken BEFORE the queries
+ * run, minus an overlap window.
+ *
+ * It used to be `new Date()` AFTER the queries. Pulls take seconds on the
+ * hosted DB, and anything written during that window was newer than what
+ * the queries saw but older than the returned cursor, so no later pull ever
+ * fetched it — a stock receipt that synced while another till's pull was in
+ * flight never reached that till.
+ *
+ * The overlap covers the other half of the race: `updatedAt` is stamped when
+ * a write statement runs, but the row only becomes visible at COMMIT, which
+ * for a receipt/sale transaction can be up to its 30s timeout later. Pull is
+ * idempotent (every row is an absolute value, applied with bulkPut), so
+ * re-sending the last minute of changes is harmless; missing one is not.
+ */
+const CURSOR_OVERLAP_MS = 60_000;
+function nextCursor(): string {
+    return new Date(Date.now() - CURSOR_OVERLAP_MS).toISOString();
+}
+
 /** Incremental changes since the device's last cursor. */
 export async function pull(tenantId: string, branchId: string, since: string) {
     const cursor = new Date(since);
+    const next = nextCursor(); // before the queries — see nextCursor()
 
     const [categories, products, stock, tables, rawStaff, rawCustomers] = await Promise.all([
         db.category.findMany({
@@ -306,9 +330,10 @@ export async function pull(tenantId: string, branchId: string, since: string) {
         // Not branch-scoped — a customer's balance is tenant-wide (see
         // bootstrap's customer query for the same reasoning). NOTE: requires
         // prisma generate — see bootstrap's identical note above.
+        // Includes deleted customers as tombstones (removed: true), same as staff.
         db.customer.findMany({
             where: { tenantId, updatedAt: { gt: cursor } },
-            select: { id: true, name: true, phone: true, balanceCents: true },
+            select: { id: true, name: true, phone: true, balanceCents: true, deletedAt: true },
         }),
     ]);
 
@@ -325,10 +350,11 @@ export async function pull(tenantId: string, branchId: string, since: string) {
         name: c.name,
         phone: c.phone,
         balance_cents: c.balanceCents,
+        removed: c.deletedAt !== null,
     }));
 
     return {
-        cursor: new Date().toISOString(),
+        cursor: next,
         categories,
         products: products.map((p: typeof products[number]) => ({
             id: p.id,
@@ -392,6 +418,14 @@ async function applySale(
             throw new Error(`sale ${saleId}: line ${line.id} money math does not hold`);
         }
     }
+    // A credit tender with nobody to owe it would be recorded with the debt
+    // attached to no one — money silently written off. The till refuses this
+    // before saving (checkout.ts); this is the server-side guarantee.
+    const hasCredit = (data.payments ?? []).some((p) => p.method === 'credit' && p.amount_cents > 0);
+    if (hasCredit && !data.customer?.name?.trim()) {
+        throw new Error(`sale ${saleId}: credit payment without a customer`);
+    }
+
     const linesSum = (data.lines ?? []).reduce((s, l) => s + l.line_total_cents, 0);
     const gratuity = data.gratuity_cents ?? 0;
     if (data.total_cents !== linesSum + gratuity ||
@@ -694,7 +728,26 @@ async function applyDebtRepayment(
  * has one (SaleLine.movement_id references a sale that owns it); a restock
  * movement stands alone, so its own id has to carry that job directly.
  */
-async function applyStockReceipt(data: StockReceiptData, tenantId: string): Promise<string> {
+async function applyStockReceipt(
+    received: StockReceiptData,
+    tenantId: string,
+    deviceBranchId: string,
+): Promise<string> {
+    // The device's branch is authoritative, exactly as for sales (applySale
+    // writes its movements to the device's branchId, never a payload field).
+    // Previously the client-sent branch_id was trusted, so a till could book
+    // a delivery into ANY branch of the tenant — while that same till's sales
+    // decremented its own branch — splitting one branch's stock across two.
+    if (received.branch_id !== deviceBranchId) {
+        // eslint-disable-next-line no-console
+        console.warn('sync.push: stock.receive branch_id differs from device branch; using device branch', {
+            id: received.id,
+            payloadBranch: received.branch_id,
+            deviceBranch: deviceBranchId,
+        });
+    }
+    const data: StockReceiptData = { ...received, branch_id: deviceBranchId };
+
     if (!Number.isInteger(data.qty) || data.qty < 1) {
         throw new Error(`stock receipt ${data.id}: qty must be a positive integer`);
     }

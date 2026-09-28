@@ -171,7 +171,7 @@ orderRoutes.post('/void-requests/:id/approve', async (ctx) => {
 
   const sale = await db.sale.findFirst({
     where: { id: request.saleId, tenantId: t.id },
-    include: { lines: true },
+    include: { lines: true, payments: true },
   });
   if (!sale) return ctx.json({ message: 'Sale no longer exists.' }, 404);
   if (sale.status !== 'completed') {
@@ -185,6 +185,9 @@ orderRoutes.post('/void-requests/:id/approve', async (ctx) => {
     ? await db.product.findMany({ where: { id: { in: productIds }, tenantId: t.id }, select: { id: true, trackStock: true } })
     : [];
   const trackedIds = new Set(products.filter((p: typeof products[number]) => p.trackStock).map((p: typeof products[number]) => p.id));
+  const creditCents = sale.payments
+    .filter((p: typeof sale.payments[number]) => p.method === 'credit')
+    .reduce((sum: number, p: typeof sale.payments[number]) => sum + p.amountCents, 0);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (db.$transaction as any)(async (tx: typeof db) => {
@@ -220,13 +223,27 @@ orderRoutes.post('/void-requests/:id/approve', async (ctx) => {
       });
     }
 
+    // A voided credit sale was never really owed — take its credit back off
+    // the customer's balance. Previously a void reversed the stock but left
+    // the customer owing for goods the sale no longer records.
+    if (creditCents > 0 && sale.customerId) {
+      await tx.customer.update({
+        where: { id: sale.customerId },
+        data: { balanceCents: { decrement: creditCents } },
+      });
+    }
+
     await tx.voidRequest.update({
       where: { id: request.id },
       data: { status: 'approved', decidedBy: user.id, decidedAt: new Date() },
     });
   });
 
-  return ctx.json({ message: 'Sale voided and stock reversed.' });
+  return ctx.json({
+    message: creditCents > 0 && sale.customerId
+      ? 'Sale voided, stock reversed and the credit removed from the customer’s balance.'
+      : 'Sale voided and stock reversed.',
+  });
 });
 
 // POST /orders/void-requests/:id/reject — owner/manager only

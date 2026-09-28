@@ -31,7 +31,7 @@
 import '../css/app.css';
 import { StrictMode, lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth.js';
 
 // ── Lazy page imports ─────────────────────────────────────────────────────────
@@ -44,6 +44,7 @@ const ProductImportPage = lazy(() => import('./pages/Products/Import.js'));
 const ProductBarcodesPage = lazy(() => import('./pages/Products/Barcodes.js'));
 const CategoriesPage    = lazy(() => import('./pages/Categories/Index.js'));
 const StaffPage         = lazy(() => import('./pages/Staff/Index.js'));
+const CustomersPage     = lazy(() => import('./pages/Customers/Index.js'));
 const BranchesPage      = lazy(() => import('./pages/Branches/Index.js'));
 const DevicesPage       = lazy(() => import('./pages/Devices/Index.js'));
 const TasksPage         = lazy(() => import('./pages/Tasks/Index.js'));
@@ -58,7 +59,6 @@ const SettingsAccountPage      = lazy(() => import('./pages/Settings/Account.js'
 const SettingsBrandingPage     = lazy(() => import('./pages/Settings/Branding.js'));
 const SettingsFiscalPage       = lazy(() => import('./pages/Settings/Fiscalisation.js'));
 const PaymentsPage      = lazy(() => import('./pages/Payments/Index.js'));
-const WelcomePage       = lazy(() => import('./pages/welcome.js'));
 
 // ── Loading fallback ─────────────────────────────────────────────────────────
 function PageLoader() {
@@ -72,8 +72,14 @@ function PageLoader() {
 // ── Auth guard ────────────────────────────────────────────────────────────────
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <PageLoader />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    // Keep where they were headed (e.g. a bookmarked /devices) so login can
+    // send them back there instead of always to /dashboard.
+    const to = location.pathname + location.search;
+    return <Navigate to={`/login?redirectTo=${encodeURIComponent(to)}`} replace />;
+  }
   return <>{children}</>;
 }
 
@@ -91,7 +97,10 @@ function App() {
       <Suspense fallback={<PageLoader />}>
         <Routes>
           {/* Public */}
-          <Route path="/" element={<WelcomePage />} />
+          {/* No explicit "/" route: the catch-all below (path="*") sends it to
+              /dashboard, and RequireAuth there bounces to /login if not
+              authenticated -- exactly right now that the marketing page is
+              served separately by the marketing/ Astro app. */}
           <Route path="/login" element={<RequireGuest><LoginPage /></RequireGuest>} />
           <Route path="/register" element={<RequireGuest><RegisterPage /></RequireGuest>} />
 
@@ -105,6 +114,7 @@ function App() {
 
           <Route path="/categories" element={<RequireAuth><CategoriesPage /></RequireAuth>} />
           <Route path="/staff" element={<RequireAuth><StaffPage /></RequireAuth>} />
+          <Route path="/customers" element={<RequireAuth><CustomersPage /></RequireAuth>} />
           <Route path="/branches" element={<RequireAuth><BranchesPage /></RequireAuth>} />
           <Route path="/devices" element={<RequireAuth><DevicesPage /></RequireAuth>} />
           <Route path="/tasks" element={<RequireAuth><TasksPage /></RequireAuth>} />
@@ -130,13 +140,17 @@ function App() {
 }
 
 // ── Mount ─────────────────────────────────────────────────────────────────────
+import { ErrorBoundary } from './Components/ErrorBoundary.js'; // folder is "Components" — lowercase only resolved on case-insensitive Windows
+
 const root = document.getElementById('root') ?? document.getElementById('app');
 if (root) {
   createRoot(root).render(
     <StrictMode>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      <ErrorBoundary>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </ErrorBoundary>
     </StrictMode>,
   );
 }
