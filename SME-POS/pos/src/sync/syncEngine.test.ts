@@ -14,7 +14,7 @@ vi.mock('../sync/apiClient', async (importOriginal) => {
     };
 });
 
-import { api, OfflineError } from '../sync/apiClient';
+import { api, ApiError, OfflineError } from '../sync/apiClient';
 import { db, getCursor, setCursor } from '../db/database';
 import { ack, enqueue, pending } from '../sync/outbox';
 import { syncManager } from '../sync/syncManager';
@@ -127,6 +127,39 @@ describe('syncManager.flush', () => {
         expect(await pending()).toHaveLength(1); // still queued for retry
     });
 
+    it('does not count a server outage against queued sales', async () => {
+        const mutation = buildSaleMutation(addProduct(emptyCart(), product()), {
+            cashierId: null,
+            currency: 'USD',
+            payments: [],
+            tenantRateBps: 0,
+        });
+        await enqueue(mutation.sale.id, mutation);
+
+        vi.mocked(api.push).mockRejectedValue(new ApiError(500, null));
+
+        await expect(syncManager.flush()).rejects.toBeInstanceOf(ApiError);
+        expect((await pending())[0].attempts).toBe(0);
+    });
+
+    it('counts a server-side rejection against only the rejected sale', async () => {
+        const opts = { cashierId: null, currency: 'USD', payments: [], tenantRateBps: 0 };
+        const good = buildSaleMutation(addProduct(emptyCart(), product({ id: 'p1' })), opts);
+        const bad = buildSaleMutation(addProduct(emptyCart(), product({ id: 'p2' })), opts);
+        await enqueue(good.sale.id, good);
+        await enqueue(bad.sale.id, bad);
+
+        vi.mocked(api.push).mockResolvedValue({ acked: [good.sale.id], cursor: 't1' });
+
+        await syncManager.flush();
+
+        const left = await pending();
+        expect(left).toHaveLength(1);
+        expect(left[0].mutationId).toBe(bad.sale.id);
+        expect(left[0].attempts).toBe(1);
+        expect(left[0].lastError).toBe('rejected_by_server');
+    });
+
     it('does nothing (no network call) when the outbox is empty', async () => {
         await syncManager.flush();
         expect(api.push).not.toHaveBeenCalled();
@@ -155,6 +188,7 @@ describe('syncManager.bootstrap', () => {
             stock: [{ product_id: 'p1', quantity: 5 }],
             staff: [{ id: 'u1', name: 'Tariro', role: 'cashier', pin_hash: 'x' }],
             tables: [],
+            customers: [],
         };
         vi.mocked(api.bootstrap).mockResolvedValue(snapshot);
 
@@ -180,6 +214,7 @@ describe('syncManager.pull', () => {
             stock: [{ product_id: 'p1', quantity: 3 }],
             tables: [],
             staff: [],
+            customers: [],
         };
         vi.mocked(api.pull).mockResolvedValue(changes);
 
@@ -220,6 +255,7 @@ describe('syncManager.pull', () => {
                 { id: 'u3', name: 'New Cashier', role: 'cashier', pin_hash: 'hash3', removed: false },
                 { id: 'u2', name: 'Grace', role: 'manager', pin_hash: 'hash2', removed: true }, // deactivated
             ],
+            customers: [],
         };
         vi.mocked(api.pull).mockResolvedValue(changes);
 
@@ -254,7 +290,7 @@ describe('syncManager.sync — tenant info refresh', () => {
     beforeEach(async () => {
         await setCursor('t0'); // sync()/pull() are no-ops before first bootstrap
         vi.mocked(api.pull).mockResolvedValue({
-            cursor: 't0', categories: [], products: [], stock: [], tables: [], staff: [],
+            cursor: 't0', categories: [], products: [], stock: [], tables: [], staff: [], customers: [],
         });
     });
 

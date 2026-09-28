@@ -53,6 +53,8 @@ model Tenant {
   stockMovements StockMovement[]
   stockLevels   StockLevel[]
   devices       Device[]
+  customers     Customer[]
+  customerPayments CustomerPayment[]
   sales         Sale[]
   saleLines     SaleLine[]
   payments      Payment[]
@@ -76,7 +78,7 @@ model Branch {
   managerId   String?   @map("manager_id") @db.Uuid
   phone       String?
   isActive    Boolean   @default(true) @map("is_active")
-  mode        String    @default("retail")                   // retail | restaurant
+  mode        String    @default("retail")                   // retail | restaurant | hardware | workshop
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
@@ -87,6 +89,7 @@ model Branch {
   users       User[]
   devices     Device[]
   sales       Sale[]
+  customerPayments CustomerPayment[]
   stockMovements StockMovement[]
   stockLevels StockLevel[]
   tables      RestaurantTable[]
@@ -235,7 +238,7 @@ model StockLevel {
   branchId  String   @map("branch_id") @db.Uuid
   productId String   @map("product_id") @db.Uuid
   quantity  Int      @default(0)
-  updatedAt DateTime? @map("updated_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
@@ -280,6 +283,7 @@ model Sale {
   deviceId       String?   @map("device_id") @db.Uuid
   cashierId      String?   @map("cashier_id") @db.Uuid
   tableId        String?   @map("table_id") @db.Uuid // unconstrained — see migration comment
+  customerId     String?   @map("customer_id") @db.Uuid // set when any payment on this sale has method: 'credit'
   status         String    @default("completed")      // completed | refunded | voided
   subtotalCents  Int       @map("subtotal_cents")
   taxCents       Int       @default(0) @map("tax_cents")
@@ -298,6 +302,7 @@ model Sale {
   branch        Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
   device        Device?        @relation(fields: [deviceId], references: [id], onDelete: SetNull)
   cashier       User?          @relation("Cashier", fields: [cashierId], references: [id], onDelete: SetNull)
+  customer      Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
   lines         SaleLine[]
   payments      Payment[]
   kitchenOrders KitchenOrder[]
@@ -359,6 +364,60 @@ model SaleLine {
 
   @@index([saleId])
   @@map("sale_lines")
+}
+
+/**
+ * A customer a business extends credit to — informal "tabs" are common in
+ * SME retail, and until now there was no way to represent "sold, not yet
+ * paid" anywhere in this schema at all. balanceCents is the running total
+ * owed, denormalized for fast reads the same way StockLevel caches the
+ * stock_movements ledger — the actual source of truth is still every
+ * individual credit payment recorded against a sale (Payment.method ===
+ * 'credit'), not this field directly. A positive balanceCents means the
+ * customer owes the business money.
+ */
+model Customer {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  name         String
+  phone        String?
+  balanceCents Int       @default(0) @map("balance_cents")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sales    Sale[]
+  payments CustomerPayment[]
+
+  @@index([tenantId, name])
+  @@map("customers")
+}
+
+/**
+ * A repayment against a customer's balance — append-only, same reasoning as
+ * StockMovement: balanceCents on Customer is a cache (denormalized for fast
+ * reads), this ledger is the actual source of truth and the audit trail an
+ * owner needs ("when did they last pay, how much"). id is client-generated
+ * on the till and doubles as the idempotency key, same convention as
+ * StockMovement.id and SaleLine.movement_id.
+ */
+model CustomerPayment {
+  id          String   @id @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  customerId  String   @map("customer_id") @db.Uuid
+  branchId    String   @map("branch_id") @db.Uuid
+  amountCents Int      @map("amount_cents") // always positive — a repayment, reducing balanceCents
+  method      String   @default("cash")     // cash | ecocash | etc, same tender vocabulary as Payment.method
+  occurredAt  DateTime @map("occurred_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  branch   Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, customerId])
+  @@map("customer_payments")
 }
 
 model Payment {
