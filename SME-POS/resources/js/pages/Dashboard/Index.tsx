@@ -2,8 +2,8 @@ import AppLayout from "../../Layouts/AppLayout.js";
 import { usePageTitle, useQuery } from "../../lib/hooks.js";
 import { useAuth } from "../../lib/auth.js";
 import { api } from "../../lib/api.js";
-import { Link } from "react-router-dom";
-import { useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { GetSelling } from "./GetSelling.js";
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 const SLICE_COLORS = ["#7c3aed", "#059669", "#d97706", "#dc2626", "#4f46e5", "#0891b2"];
@@ -12,21 +12,13 @@ export default function DashboardIndex() {
   usePageTitle("Dashboard");
   const { user, tenant } = useAuth();
   const isAdmin = user?.role === "owner" || user?.role === "manager";
-  const [checklistDismissed, setChecklistDismissed] = useState(false);
+  const [searchParams] = useSearchParams();
 
   const { data: summary, loading } = useQuery(() => api.dashboard.summary(), []);
   const { data: analytics } = useQuery(() => api.analytics.overview(7), []);
 
   const trend = (analytics?.salesByDay ?? []) as { date: string; total_cents: number; count: number }[];
   const maxRevenue = Math.max(1, ...trend.map((t) => t.total_cents ?? 0));
-
-  const steps = [
-    { key: "hasProduct", label: "Add your first product", href: "/products", done: (summary?.products ?? 0) > 0 },
-    { key: "hasSale", label: "Make your first sale", href: "/pos", done: (summary?.today.count ?? 0) > 0 },
-    { key: "hasPaymentSetup", label: "Configure your settings", href: "/settings/general", done: isAdmin },
-    { key: "hasFiscal", label: "Request ZIMRA Fiscalisation", href: "/settings/fiscalisation", done: false, optional: true },
-  ];
-  const completedCount = steps.filter((s) => s.done).length;
 
   if (loading || !summary) {
     return (
@@ -43,31 +35,10 @@ export default function DashboardIndex() {
         Welcome to Wivae{tenant ? `, ${tenant.name}` : ""} — your portal is ready
       </p>
 
-      {!checklistDismissed && completedCount < steps.length && (
-        <div className="mt-6 rounded-xl border border-brand-50 bg-brand-50 p-5">
-          <div className="flex items-center justify-between">
-            <h2 className="flex items-center gap-2 font-semibold text-brand-700">
-              <IconRocket />
-              Getting Started
-              <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-semibold text-brand-700">
-                {completedCount}/{steps.length}
-              </span>
-            </h2>
-            <button onClick={() => setChecklistDismissed(true)} className="text-brand-500 hover:text-brand-700" aria-label="Dismiss">✕</button>
-          </div>
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {steps.map((s) => (
-              <Link key={s.key} to={s.href} className="flex items-center gap-2.5 rounded-lg bg-surface px-3 py-2.5 text-sm hover:ring-1 hover:ring-brand-50">
-                <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border-2 ${s.done ? "border-positive bg-positive text-white" : "border-hairline"}`}>
-                  {s.done && <IconCheck />}
-                </span>
-                <span className={s.done ? "text-muted line-through" : ""}>{s.label}</span>
-                {s.optional && <span className="ml-auto text-xs text-muted">(optional)</span>}
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Sign-up → first sale. Replaces the old "Getting Started" card, whose
+          ticks weren't real ("Configure your settings" was ticked for every
+          owner; "first sale" only counted today's sales). */}
+      {isAdmin && <GetSelling welcome={searchParams.get("welcome") === "1"} />}
 
       {/* KPI cards */}
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
