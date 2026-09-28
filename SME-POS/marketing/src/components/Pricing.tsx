@@ -4,7 +4,7 @@ import { REGISTER_URL } from "../config";
 
 /**
  * Ported from Home.tsx's Pricing, self-serve section only. Restored figures
- * (BYOD $29.99/mo, Standard $180 one-time, Premium $199.9 one-time) — see
+ * (BYOD $29.99/mo, Standard $199.99 one-time, Premium $249 one-time) — see
  * the pricing-restore commit for why these are one-time, not recurring.
  *
  * Fully static (zero client JS) — deliberately, so a search engine or a

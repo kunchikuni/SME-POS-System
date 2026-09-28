@@ -388,7 +388,13 @@ export const api = {
     },
 
     billing: {
-        get: () => get<{ subscription: unknown; plan: string; trialEndsAt: string | null }>('/billing/payments'),
+        get: () => get<{
+            subscription: unknown; plan: string; trialEndsAt: string | null;
+            /** The plans the server actually charges for — the page renders these, never its own list. */
+            plans: { key: string; label: string; amountCents: number; recurring: boolean; branches: number | null; features: string[] }[];
+        }>('/billing/payments'),
+        /** Starts a Paynow payment for the plan; the server prices it. */
+        subscribe: (plan: string) => post<{ redirectUrl: string }>('/billing/payments/subscribe', { plan }),
     },
 
     fiscalisation: {
