@@ -228,21 +228,23 @@ async function seedTasks(tenantId: string, branchId: string) {
 }
 
 function report(subdomain: string) {
-  const domain = process.env.TENANT_DOMAIN ?? 'wivae.test';
+  const domain = process.env.TENANT_DOMAIN ?? 'localhost';
   const host = `${subdomain}.${domain}`;
+  // Dev servers: dashboard on :5173, till on :5174 (vite.config.ts, pos/vite.config.ts).
+  const isLocal = domain === 'localhost';
 
   console.log('');
   console.log('Demo tenant ready.');
-  console.log(`  URL:              http://${host}/login`);
+  console.log(`  URL:              http://${host}${isLocal ? ':5173' : ''}/login`);
   console.log(`  Email:            ${OWNER_EMAIL}`);
   console.log(`  Password:         ${OWNER_PASSWORD}`);
   console.log(`  Device token (POS): ${DEVICE_TOKEN}`);
   console.log(`  Cashier PIN (till): ${CASHIER_PIN}`);
   console.log(`  Manager login:    ${MANAGER_EMAIL} / ${MANAGER_PASSWORD}`);
   console.log('  3 demo tasks seeded (dashboard: /tasks, till: Tasks button)');
-  console.log(`  Till URL:         http://${host}/pos`);
+  console.log(`  Till URL:         http://${host}${isLocal ? ':5174' : ''}/pos/`);
   console.log('  VAT rate:         15% (inclusive — Settings → General to change)');
-  console.log(`  (add '127.0.0.1 ${host}' to your hosts file if you haven't)`);
+  if (!isLocal) console.log(`  (add '127.0.0.1 ${host}' to your hosts file if you haven't)`);
   console.log('');
   console.log('  Restaurant mode (tables + kitchen at /kitchen): set the demo');
   console.log("  branch's mode to 'restaurant' directly in the DB, e.g. via psql:");

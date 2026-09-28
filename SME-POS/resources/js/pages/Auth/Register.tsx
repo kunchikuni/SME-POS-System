@@ -2,10 +2,10 @@ import { useEffect, useId, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { ApiError } from "../../lib/api.js";
 import { usePageTitle } from "../../lib/hooks.js";
+import { TENANT_DOMAIN, workspaceOrigin } from "../../lib/tenantDomain.js";
 
 /** Must match TRIAL_DAYS in server/src/routes/auth.ts. */
 const TRIAL_DAYS = 7;
-const TENANT_DOMAIN = import.meta.env.VITE_TENANT_DOMAIN ?? "wivae.test";
 const API_BASE = (import.meta.env.VITE_API_URL ?? "/api") as string;
 
 const TYPES = [
@@ -20,12 +20,6 @@ type Availability = "idle" | "checking" | "available" | "taken" | "reserved" | "
 /** "Mai Tariro's Tuckshop" → "mai-tariros-tuckshop" */
 function slugify(name: string): string {
     return name.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30).replace(/-+$/, "");
-}
-
-/** The new workspace's own address, keeping this page's protocol and (dev) port. */
-function workspaceOrigin(subdomain: string): string {
-    const port = window.location.port ? `:${window.location.port}` : "";
-    return `${window.location.protocol}//${subdomain}.${TENANT_DOMAIN}${port}`;
 }
 
 /**

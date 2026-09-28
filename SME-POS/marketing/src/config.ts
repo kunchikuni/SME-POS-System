@@ -28,11 +28,13 @@ export const API_URL = import.meta.env.PUBLIC_API_URL ?? "/api";
  * install it directly. It sends the visitor to their workspace's till with
  * ?install=1, where the pairing screen leads with the install card.
  *
- * Dev: http://<workspace>.wivae.test:5174/pos/ (POS Vite server, see
- * pos/vite.config.ts). Prod: https://<workspace>.<PUBLIC_TENANT_DOMAIN>/pos/.
+ * Dev: http://<workspace>.localhost:5174/pos/ (POS Vite server, see
+ * pos/vite.config.ts) — *.localhost needs no hosts entries and is a secure
+ * context, so the till can actually be installed from it.
+ * Prod: https://<workspace>.<PUBLIC_TENANT_DOMAIN>/pos/.
  */
 const TENANT_DOMAIN =
-    import.meta.env.PUBLIC_TENANT_DOMAIN ?? (import.meta.env.DEV ? "wivae.test" : "wivae.com");
+    import.meta.env.PUBLIC_TENANT_DOMAIN ?? (import.meta.env.DEV ? "localhost" : "wivae.com");
 
 export function tillUrl(workspace: string): string {
     return import.meta.env.DEV

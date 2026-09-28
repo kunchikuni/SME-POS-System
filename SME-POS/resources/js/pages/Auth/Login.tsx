@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "../../lib/api.js";
 import { useAuth } from "../../lib/auth.js";
 import { usePageTitle } from "../../lib/hooks.js";
+import { TENANT_DOMAIN, centralOrigin } from "../../lib/tenantDomain.js";
 
 /** Only same-app paths — never "//evil.com" or an absolute URL (open redirect). */
 function safeRedirect(target: string | null): string {
@@ -23,10 +24,11 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string; general?: string }>({});
 
-  const tenantDomain = import.meta.env.VITE_TENANT_DOMAIN ?? "wivae.test";
+  // On a workspace (spider.localhost), sign-up lives on the central site. Was
+  // `//${domain}/register`, which dropped the port — a dead link in dev.
   const registerUrl =
-    typeof window !== "undefined" && window.location.hostname.endsWith(tenantDomain)
-      ? `//${tenantDomain}/register`
+    typeof window !== "undefined" && window.location.hostname.endsWith(`.${TENANT_DOMAIN}`)
+      ? `${centralOrigin()}/register`
       : "/register";
 
   async function submit(e: FormEvent) {

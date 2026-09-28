@@ -109,7 +109,7 @@ app.use('*', secureHeaders());
 // with credentials:true — which disables the same-origin policy entirely:
 // any website could make credentialed requests to the API from a logged-in
 // user's browser AND read the responses (data exfiltration cross-origin).
-const ROOT_DOMAIN = process.env.TENANT_DOMAIN ?? 'wivae.test';
+const ROOT_DOMAIN = process.env.TENANT_DOMAIN ?? 'localhost';
 const DEV_ORIGINS = new Set([
     'http://localhost:5173', // dashboard dev
     'http://localhost:5174', // POS dev
@@ -341,6 +341,21 @@ tenant.route('/', dashboard);
 api.route('/', tenant);
 
 app.route('/api', api);
+
+// ── Installable-app files ─────────────────────────────────────────────────────
+// The two catch-alls below answer EVERY other path with an HTML shell — which
+// used to include the till's manifest, its service worker and its icons, so
+// in production the till was never installable (the browser got HTML for
+// its manifest) and its offline service worker never registered. These are
+// served as the real files, from an explicit list rather than all of
+// ../public, so nothing else that lands in the build folder is exposed.
+for (const path of [
+  '/manifest.webmanifest', '/icons/*', '/favicon.svg', '/favicon.ico', '/apple-touch-icon.png', '/robots.txt',
+  '/pos/manifest.webmanifest', '/pos/sw.js', '/pos/workbox-*', '/pos/registerSW.js', '/pos/icons/*',
+  '/pos/screenshots/*', '/pos/offline.html', '/pos/favicon.svg', '/pos/favicon.ico',
+]) {
+  app.get(path, serveStatic({ root: '../public' }));
+}
 
 // ── POS PWA shell catch-all ───────────────────────────────────────────────────
 // Serves pos/index.html for all /pos/* navigation requests.
