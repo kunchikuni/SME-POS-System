@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import { MissingPinHashError, verifyPin } from '../pos/pin';
 import { startShift, type Shift } from '../pos/shift';
+import { syncManager } from '../sync/syncManager';
 import type { StaffMember } from '../types/contract';
 import type { DeviceSession } from '../sync/session';
 import { InstallAppCard, SyncBadge } from './Shared';
@@ -36,7 +37,13 @@ function accentFor(mode: DeviceSession['branch']['mode']) {
  */
 export function ShiftLogin({ device, onStart }: { device: DeviceSession; onStart: (shift: Shift) => void }) {
   const staff = useLiveQuery(() => db.staff.toArray(), [], [] as StaffMember[]);
-  const [selected, setSelected] = useState<StaffMember | null>(null);
+  // The picked person's id, not a copy of their record: the PIN pad must check
+  // against the CURRENT PIN hash. Holding the record froze it at tap time, so a
+  // PIN reset in the dashboard that synced while the pad was open kept being
+  // "incorrect" until the cashier backed out and tapped their name again.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = selectedId ? staff.find((s) => s.id === selectedId) ?? null : null;
+  const setSelected = (s: StaffMember | null) => setSelectedId(s?.id ?? null);
   const accent = accentFor(device.branch.mode);
 
   if (staff.length === 0) {
@@ -57,8 +64,10 @@ export function ShiftLogin({ device, onStart }: { device: DeviceSession; onStart
     );
   }
 
+  // If they were removed by a sync while their pad was open, `selected` is
+  // null here and we're simply back at the list.
   if (selected) {
-    return <PinPad staff={selected} accent={accent} onBack={() => setSelected(null)} onStart={onStart} />;
+    return <PinPad key={selected.id} staff={selected} accent={accent} onBack={() => setSelected(null)} onStart={onStart} />;
   }
 
   return (
@@ -130,7 +139,11 @@ function PinPad({
         onStart(startShift(staff));
         return;
       }
-      setError('Incorrect PIN. Try again.');
+      // A PIN reset in the dashboard only reaches this till on its next sync
+      // (30s poll). Pull now, so a just-changed PIN works on the next try
+      // instead of after up to half a minute of "incorrect".
+      void syncManager.sync();
+      setError('Incorrect PIN. If it was just changed in the dashboard, give this till a few seconds to sync, then try again.');
       setPin('');
     } catch (e) {
       if (e instanceof MissingPinHashError) {

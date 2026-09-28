@@ -18,6 +18,7 @@ import type { DeviceSession } from '../sync/session';
 import type { Shift } from '../pos/shift';
 import type {
     Category,
+    Customer,
     Product,
     SalePayload,
     StockLevel,
@@ -25,6 +26,8 @@ import type {
 } from '../types/contract';
 import { SyncBadge, SettingsChangedBanner, ModePill, ThemeToggle, UpdateAvailableBanner, OutboxStuckBanner, SyncedToast, InstallAppButton } from './Shared';
 import { Checkout } from './Checkout';
+import { ReceiveStock } from './ReceiveStock';
+import { RecordPayment } from './RecordPayment';
 import { Receipt } from './Receipt';
 import { PrinterSettings } from './PrinterSettings';
 import { TasksPanel } from './TasksPanel';
@@ -67,6 +70,23 @@ export function RestaurantTill({
     const [scanMiss,      setScanMiss]      = useState<string | null>(null);
     const [scanUnsupported,setScanUnsupported]= useState(false);
     const [stockNotice,   setStockNotice]   = useState<string | null>(null);
+    const [showReceiveStock,  setShowReceiveStock]  = useState(false);
+    const [showRecordPayment, setShowRecordPayment] = useState(false);
+    const customers = useLiveQuery(() => db.customers.toArray(), [], [] as Customer[]);
+    // Receive stock / Record payment are owner/manager-only, same as RetailTill.
+    const isManager = shift.role === 'owner' || shift.role === 'manager';
+
+    // Rendered from both the floor-plan and menu views (both headers open them).
+    const managerPanels = (
+        <>
+            {showReceiveStock && (
+                <ReceiveStock branchId={device.branch.id} products={products} stockRows={stockRows} onClose={() => setShowReceiveStock(false)} />
+            )}
+            {showRecordPayment && (
+                <RecordPayment customers={customers} onClose={() => setShowRecordPayment(false)} />
+            )}
+        </>
+    );
 
     const stock = useMemo(() => {
         const map = new Map<string, number>();
@@ -183,11 +203,16 @@ export function RestaurantTill({
                         <ThemeToggle />
                         <InstallAppButton />
                         <ModePill mode="restaurant" />
+                        {/* Managers usually start here, on the floor plan — so the
+                            manager actions are on this header too, not only the menu's. */}
+                        {isManager && <button onClick={() => setShowReceiveStock(true)}  className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Receive stock</button>}
+                        {isManager && <button onClick={() => setShowRecordPayment(true)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Record payment</button>}
                         <button onClick={onEndShift} className="rounded-lg px-3 py-1.5 text-xs font-medium text-red-400/80 hover:bg-red-500/10 hover:text-red-300 transition-colors">
                             End shift
                         </button>
                     </div>
                 </header>
+                {managerPanels}
 
                 <div className="flex-1 overflow-y-auto px-5 py-6 dark-scroll">
                     <div className="mb-6 flex items-center justify-between">
@@ -371,6 +396,8 @@ export function RestaurantTill({
                             <InstallAppButton />
                             <ModePill mode="restaurant" />
                             <button onClick={() => setShowTasks(true)}   className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Tasks</button>
+                            {isManager && <button onClick={() => setShowReceiveStock(true)}  className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Receive stock</button>}
+                            {isManager && <button onClick={() => setShowRecordPayment(true)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Record payment</button>}
                             <button onClick={() => setShowPrinter(true)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Printer</button>
                             <button onClick={() => setView('floor')}     className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Floor plan</button>
                             <button onClick={onEndShift}                 className="rounded-lg px-3 py-1.5 text-xs font-medium text-red-400/80 hover:bg-red-500/10 hover:text-red-300 transition-colors">End shift</button>
@@ -379,6 +406,7 @@ export function RestaurantTill({
 
                     {showPrinter && <PrinterSettings onClose={() => setShowPrinter(false)} />}
                     {showTasks   && <TasksPanel cashierId={shift.cashierId} onClose={() => setShowTasks(false)} />}
+                    {managerPanels}
 
                     {/* Search + scan */}
                     <div className="px-5 pt-4 pb-3 flex gap-2">
