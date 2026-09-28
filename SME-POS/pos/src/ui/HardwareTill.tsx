@@ -18,18 +18,20 @@ import { completeSale, saleErrorMessage } from '../pos/checkout';
 import type { DeviceSession } from '../sync/session';
 import type { Shift } from '../pos/shift';
 import type { Category, PaymentMethod, Product, SalePayload, StockLevel } from '../types/contract';
-import { SyncBadge, SettingsChangedBanner, ModePill, ThemeToggle, UpdateAvailableBanner, OutboxStuckBanner, SyncedToast, InstallAppButton } from './Shared';
+import { SyncBadge, SettingsChangedBanner, ModePill, ThemeToggle, UpdateAvailableBanner, OutboxStuckBanner, SyncedToast, InstallAppButton, TillHeaderButtons } from './Shared';
 import { Receipt } from './Receipt';
 import { PrinterSettings } from './PrinterSettings';
 import { TasksPanel } from './TasksPanel';
 import { CreditCustomerFields, useCreditCustomer } from './CreditCustomer';
+import { ReceiveStock } from './ReceiveStock';
+import { RecordPayment } from './RecordPayment';
 
 const METHODS: { value: PaymentMethod; label: string; icon: string }[] = [
-    { value: 'cash',     label: 'Cash',    icon: '\uD83D\uDCB5' },
-    { value: 'ecocash',  label: 'EcoCash', icon: '\uD83D\uDCF1' },
-    { value: 'zipit',    label: 'ZIPIT',   icon: '\u26A1' },
-    { value: 'other',    label: 'Other',   icon: '\uD83D\uDD04' },
-    { value: 'credit',   label: 'Credit',  icon: '\uD83D\uDCD2' },
+    { value: 'cash',     label: 'Cash',    icon: '💵' },
+    { value: 'ecocash',  label: 'EcoCash', icon: '📱' },
+    { value: 'zipit',    label: 'ZIPIT',   icon: '⚡' },
+    { value: 'other',    label: 'Other',   icon: '🔄' },
+    { value: 'credit',   label: 'Credit',  icon: '📒' },
 ];
 
 /**
@@ -68,7 +70,10 @@ export function HardwareTill({
     const [saleError,   setSaleError]   = useState<string | null>(null);
     const [showPrinter, setShowPrinter] = useState(false);
     const [showTasks,   setShowTasks]   = useState(false);
+    const [showReceiveStock,  setShowReceiveStock]  = useState(false);
+    const [showRecordPayment, setShowRecordPayment] = useState(false);
     const credit = useCreditCustomer();
+    const isManager = shift.role === 'owner' || shift.role === 'manager';
 
     const stock = useMemo(() => {
         const map = new Map<string, number>();
@@ -146,24 +151,35 @@ export function HardwareTill({
     }
 
     return (
-        <div className="flex h-screen flex-col bg-[#0f0a1e] text-white overflow-hidden">
+        <div className="flex h-screen flex-col pos-bg text-white overflow-hidden">
             <header className="flex items-center justify-between px-4 py-3 border-b border-white/8 shrink-0">
                 <div className="flex items-center gap-3">
                     <SyncBadge />
                     <ModePill mode={device.branch.mode} />
                 </div>
                 <span className="text-sm font-semibold text-slate-300">{device.branch.name}</span>
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
                     <InstallAppButton />
                     <ThemeToggle />
-                    <button className="till-icon-btn" onClick={() => setShowTasks(true)} title="Tasks">\uD83D\uDCCB</button>
-                    <button className="till-icon-btn" onClick={() => setShowPrinter(true)} title="Printer">\uD83D\uDDA8\uFE0F</button>
-                    <button className="till-icon-btn" onClick={onEndShift} title="End shift">\uD83D\uDEAA</button>
+                    <TillHeaderButtons
+                        isManager={isManager}
+                        onTasks={() => setShowTasks(true)}
+                        onReceiveStock={() => setShowReceiveStock(true)}
+                        onRecordPayment={() => setShowRecordPayment(true)}
+                        onPrinter={() => setShowPrinter(true)}
+                        onEndShift={onEndShift}
+                    />
                 </div>
             </header>
 
             {showTasks   && <TasksPanel cashierId={shift.cashierId} onClose={() => setShowTasks(false)} />}
             {showPrinter && <PrinterSettings onClose={() => setShowPrinter(false)} />}
+            {showReceiveStock && (
+                <ReceiveStock branchId={device.branch.id} products={products} stockRows={stockRows} onClose={() => setShowReceiveStock(false)} />
+            )}
+            {showRecordPayment && (
+                <RecordPayment customers={credit.customers} onClose={() => setShowRecordPayment(false)} />
+            )}
             <UpdateAvailableBanner />
             <OutboxStuckBanner />
             <SyncedToast />
@@ -175,7 +191,7 @@ export function HardwareTill({
                     <div className="px-4 py-3 border-b border-white/8 space-y-2">
                         <input
                             className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-violet-500/50"
-                            placeholder="Search parts, SKU\u2026"
+                            placeholder="Search parts, SKU…"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
@@ -206,7 +222,7 @@ export function HardwareTill({
                 </section>
 
                 {/* RIGHT: cart */}
-                <section className="flex h-full w-80 xl:w-96 shrink-0 flex-col bg-[#0a061a]">
+                <section className="sidebar-retail flex h-full w-80 xl:w-96 shrink-0 flex-col border-l border-white/6">
                     <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
                         <div>
                             <h2 className="font-bold text-white tracking-tight">Order</h2>
@@ -224,7 +240,7 @@ export function HardwareTill({
                     <div className="flex-1 overflow-y-auto px-5 py-3 space-y-2">
                         {cart.lines.length === 0 ? (
                             <div className="mt-10 flex flex-col items-center gap-3 text-center">
-                                <div className="h-14 w-14 rounded-2xl bg-white/5 flex items-center justify-center text-2xl ring-1 ring-white/8">\uD83D\uDD27</div>
+                                <div className="h-14 w-14 rounded-2xl bg-white/5 flex items-center justify-center text-2xl ring-1 ring-white/8">🔧</div>
                                 <p className="text-sm text-slate-500">Tap a part above</p>
                             </div>
                         ) : (
@@ -271,7 +287,7 @@ export function HardwareTill({
                         </div>
                         {saleError && <p className="text-xs text-red-400">{saleError}</p>}
                         <button onClick={completeSaleNow} disabled={cart.lines.length === 0 || completing} className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 py-3.5 font-bold text-white text-sm tracking-wide shadow-lg shadow-indigo-500/25 hover:opacity-95 active:scale-[0.99] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-                            {completing ? 'Processing\u2026' : `Charge ${formatMoney(totals.total_cents)}`}
+                            {completing ? 'Processing…' : `Charge ${formatMoney(totals.total_cents)}`}
                         </button>
                     </div>
                 </section>

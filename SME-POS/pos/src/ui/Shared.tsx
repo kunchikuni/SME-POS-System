@@ -322,6 +322,36 @@ export function ModePill({ mode }: { mode: TenantMode }) {
     );
 }
 
+const HEADER_BTN = 'rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors';
+const END_SHIFT_BTN = 'rounded-lg px-3 py-1.5 text-xs font-medium text-red-400/80 hover:bg-red-500/10 hover:text-red-300 transition-colors';
+
+/**
+ * The till header's actions, as text buttons in the same style as
+ * RetailTill's (the Hardware/Workshop tills used unlabelled emoji).
+ *
+ * Receive stock and Record payment are owner/manager-only — the same gate as
+ * RetailTill: a delivery or a repayment has no payment total to cross-check
+ * it the way a sale does, so it needs the trust of a manual adjustment.
+ */
+export function TillHeaderButtons({ isManager, onTasks, onReceiveStock, onRecordPayment, onPrinter, onEndShift }: {
+    isManager: boolean;
+    onTasks: () => void;
+    onReceiveStock: () => void;
+    onRecordPayment: () => void;
+    onPrinter: () => void;
+    onEndShift: () => void;
+}) {
+    return (
+        <>
+            <button onClick={onTasks} className={HEADER_BTN}>Tasks</button>
+            {isManager && <button onClick={onReceiveStock} className={HEADER_BTN}>Receive stock</button>}
+            {isManager && <button onClick={onRecordPayment} className={HEADER_BTN}>Record payment</button>}
+            <button onClick={onPrinter} className={HEADER_BTN}>Printer</button>
+            <button onClick={onEndShift} className={END_SHIFT_BTN}>End shift</button>
+        </>
+    );
+}
+
 /*
  * Install UI — native only.
  *
