@@ -7,7 +7,7 @@ import Pricing from "../components/Pricing";
 import { FooterCta, Footer } from "../components/Footer";
 import FaqAccordion from "../islands/FaqAccordion";
 import EnquiryFlow from "../islands/EnquiryFlow";
-import InstallTill from "../islands/InstallTill";
+import WorkspaceSignIn from "../islands/WorkspaceSignIn";
 import type { PlanInfo, HardwareInfo, BusinessTierInfo } from "../components/types";
 
 // Static config — restored figures (see the pricing-restore commit).
@@ -58,9 +58,9 @@ const enterpriseTier: BusinessTierInfo = {
       </div>
     </section>
 
-    <section id="install" class="border-t border-hairline px-6 py-24 transition-colors">
+    <section id="signin" class="border-t border-hairline px-6 py-24 transition-colors">
       <div class="mx-auto max-w-5xl">
-        <InstallTill client:visible />
+        <WorkspaceSignIn client:visible />
       </div>
     </section>
 

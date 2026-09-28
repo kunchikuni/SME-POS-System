@@ -1,4 +1,4 @@
-import { LOGIN_URL, REGISTER_URL } from "../config";
+import { REGISTER_URL } from "../config";
 import DarkModeToggle from "../islands/DarkModeToggle";
 
 /**
@@ -24,11 +24,12 @@ export default function Nav() {
           <a href="#features" className="hover:text-ink transition-colors">Features</a>
           <a href="#pricing" className="hover:text-ink transition-colors">Pricing</a>
           <a href="#faq" className="hover:text-ink transition-colors">FAQ</a>
-          <a href="#install" className="hover:text-ink transition-colors">Install till</a>
         </nav>
         <div className="flex items-center gap-3">
           <DarkModeToggle />
-          <a href={LOGIN_URL} className="text-sm text-muted hover:text-ink transition-colors">
+          {/* To the "Sign in to your workspace" section: signing in only works on a
+              workspace's own address, so a bare /login link could never sign anyone in. */}
+          <a href="#signin" className="text-sm text-muted hover:text-ink transition-colors">
             Sign in
           </a>
           <a
