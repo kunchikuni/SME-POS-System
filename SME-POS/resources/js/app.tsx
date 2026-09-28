@@ -37,6 +37,7 @@ import { AuthProvider, useAuth } from './lib/auth.js';
 // ── Lazy page imports ─────────────────────────────────────────────────────────
 const LoginPage         = lazy(() => import('./pages/Auth/Login.js'));
 const RegisterPage      = lazy(() => import('./pages/Auth/Register.js'));
+const WelcomePage       = lazy(() => import('./pages/Auth/Welcome.js'));
 const DashboardPage     = lazy(() => import('./pages/Dashboard/Index.js'));
 const ProductsPage      = lazy(() => import('./pages/Products/Index.js'));
 const ProductCreatePage = lazy(() => import('./pages/Products/Create.js'));
@@ -103,6 +104,8 @@ function App() {
               served separately by the marketing/ Astro app. */}
           <Route path="/login" element={<RequireGuest><LoginPage /></RequireGuest>} />
           <Route path="/register" element={<RequireGuest><RegisterPage /></RequireGuest>} />
+          {/* Neither guest- nor auth-guarded: it's the step that turns a guest into a signed-in owner. */}
+          <Route path="/welcome" element={<WelcomePage />} />
 
           {/* Protected dashboard */}
           <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />

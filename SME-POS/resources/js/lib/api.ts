@@ -235,6 +235,21 @@ export const api = {
         login: (email: string, password: string) =>
             post<{ user: { id: string; name: string; role: string } }>('/login', { email, password }),
         logout: () => post<void>('/logout'),
+        /** Trade registration's one-time hand-off token for a session on this workspace. */
+        welcome: (token: string) =>
+            post<{ user: { id: string; name: string; role: string } }>('/welcome', { token }),
+    },
+
+    onboarding: {
+        status: () =>
+            get<{
+                mode: string;
+                steps: { products: boolean; till: boolean; sale: boolean };
+                counts: { products: number; devices: number; sales: number };
+            }>('/onboarding'),
+        loadStarterProducts: () => post<{ message: string; count: number }>('/onboarding/starter-products'),
+        /** Creates a device for this browser; the token is used once to open the till paired. */
+        createTill: () => post<{ id: string; name: string; branch: string; token: string }>('/onboarding/till'),
     },
 
     dashboard: {
