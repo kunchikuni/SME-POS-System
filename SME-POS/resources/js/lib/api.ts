@@ -260,6 +260,8 @@ export const api = {
         status: () =>
             get<{
                 mode: string;
+                /** The kind of business (Pharmacy, Bottle store…) — drives the example products. */
+                businessType: { key: string; label: string };
                 steps: { products: boolean; till: boolean; sale: boolean };
                 counts: { products: number; devices: number; sales: number };
             }>('/onboarding'),
@@ -305,6 +307,11 @@ export const api = {
         list: () => get<{ categories: { id: string; name: string; products_count: number }[] }>('/categories'),
         create: (name: string) => post<{ id: string; name: string }>('/categories', { name }),
         delete: (id: string) => del<{ message: string }>(`/categories/${id}`),
+        /** Ready-made categories for this kind of business that aren't added yet. */
+        suggestions: () => get<{ businessType: string; suggestions: string[] }>('/categories/suggestions'),
+        /** Adds the named suggestions, or all of them when `names` is omitted. */
+        addSuggestions: (names?: string[]) =>
+            post<{ added: string[]; message: string }>('/categories/suggestions', names ? { names } : {}),
     },
 
     staff: {

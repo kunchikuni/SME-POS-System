@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import AppLayout from "../../Layouts/AppLayout.js";
 import { usePageTitle, useQuery, useMutation } from "../../lib/hooks.js";
 import { api } from "../../lib/api.js";
@@ -73,7 +73,10 @@ export default function ProductCreate() {
           </label>
 
           <label className="block">
-            <span className="text-sm font-medium">Category</span>
+            <span className="flex items-center justify-between text-sm font-medium">
+              Category
+              <Link to="/categories" className="text-xs font-normal text-brand-600 hover:underline">Manage categories</Link>
+            </span>
             <select
               value={form.categoryId}
               onChange={(e) => setForm(f => ({ ...f, categoryId: e.target.value }))}

@@ -18,7 +18,7 @@ import { completeSale, saleErrorMessage } from '../pos/checkout';
 import type { DeviceSession } from '../sync/session';
 import type { Shift } from '../pos/shift';
 import type { Category, PaymentMethod, Product, SalePayload, StockLevel } from '../types/contract';
-import { SyncBadge, SettingsChangedBanner, ModePill, ThemeToggle, UpdateAvailableBanner, OutboxStuckBanner, SyncedToast, InstallAppButton, TillHeaderButtons } from './Shared';
+import { SyncBadge, SettingsChangedBanner, ModePill, ThemeToggle, OutboxStuckBanner, SyncedToast, InstallAppButton, TillHeaderButtons } from './Shared';
 import { Receipt } from './Receipt';
 import { PrinterSettings } from './PrinterSettings';
 import { TasksPanel } from './TasksPanel';
@@ -180,7 +180,6 @@ export function HardwareTill({
             {showRecordPayment && (
                 <RecordPayment customers={credit.customers} onClose={() => setShowRecordPayment(false)} />
             )}
-            <UpdateAvailableBanner />
             <OutboxStuckBanner />
             <SyncedToast />
             <SettingsChangedBanner />

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import AppLayout from "../../Layouts/AppLayout.js";
 import { usePageTitle, useQuery, useMutation } from "../../lib/hooks.js";
 import { api } from "../../lib/api.js";
@@ -24,7 +25,18 @@ export default function CategoriesIndex() {
 
   const { submit: deleteCategory } = useMutation(
     (id: string) => api.categories.delete(id),
-    { onSuccess: () => refetch() }
+    { onSuccess: () => { refetch(); refetchSuggestions(); } }
+  );
+
+  // Ready-made categories for this kind of business that aren't added yet
+  // (new businesses already start with them; this covers older ones and
+  // anything deleted since).
+  const { data: suggestionData, refetch: refetchSuggestions } = useQuery(() => api.categories.suggestions(), []);
+  const suggestions = suggestionData?.suggestions ?? [];
+
+  const { submit: addSuggestions, loading: addingSuggestions } = useMutation(
+    (names?: string[]) => api.categories.addSuggestions(names),
+    { onSuccess: () => { refetch(); refetchSuggestions(); } }
   );
 
   function add(e: React.FormEvent) {
@@ -34,7 +46,8 @@ export default function CategoriesIndex() {
 
   return (
     <AppLayout>
-      <h1 className="font-display text-xl font-semibold tracking-tight">Categories</h1>
+      <Link to="/products" className="text-xs text-muted hover:text-ink">← Products</Link>
+      <h1 className="mt-1 font-display text-xl font-semibold tracking-tight">Categories</h1>
 
       <form onSubmit={add} className="mt-6 flex max-w-md gap-2">
         <input
@@ -52,6 +65,35 @@ export default function CategoriesIndex() {
         </button>
       </form>
       {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name}</p>}
+
+      {suggestions.length > 0 && (
+        <div className="mt-4 max-w-md rounded-xl border border-hairline bg-surface p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-medium text-ink">
+              Suggested for {suggestionData?.businessType ?? "your business"}
+            </p>
+            <button
+              onClick={() => addSuggestions(undefined)}
+              disabled={addingSuggestions}
+              className="text-xs font-semibold text-brand-600 hover:underline disabled:opacity-50"
+            >
+              Add all
+            </button>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {suggestions.map((s) => (
+              <button
+                key={s}
+                onClick={() => addSuggestions([s])}
+                disabled={addingSuggestions}
+                className="rounded-full border border-hairline px-3 py-1 text-xs text-ink hover:border-brand-500 hover:bg-brand-50 disabled:opacity-50"
+              >
+                + {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="mt-8 flex justify-center">
