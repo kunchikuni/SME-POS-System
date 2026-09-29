@@ -45,7 +45,12 @@ export default function AppLayout({ children }: PropsWithChildren) {
     { label: "Staff Management", href: "/staff", icon: <IconUsers />, match: (u) => u.startsWith("/staff") },
     { label: "Tasks", href: "/tasks", icon: <IconTasks />, match: (u) => u.startsWith("/tasks") },
     { label: "Branches", href: "/branches", icon: <IconStore />, match: (u) => u.startsWith("/branches") },
-    { label: "Kitchen", href: "/kitchen", icon: <IconChef />, match: (u) => u.startsWith("/kitchen") },
+    // Only for businesses with a restaurant branch — a shop, hardware store or
+    // workshop has no kitchen. Shown while modes is still unknown (older API),
+    // so nobody loses the link to it.
+    ...(!tenant?.modes || tenant.modes.includes("restaurant")
+      ? [{ label: "Kitchen", href: "/kitchen", icon: <IconChef />, match: (u: string) => u.startsWith("/kitchen") }]
+      : []),
     { label: "Fiscalisation", href: "/settings/fiscalisation", icon: <IconChip />, badge: "ADD-ON", match: (u) => u.startsWith("/settings/fiscalisation") },
     { label: "Payments", href: "/settings/payments", icon: <IconCard />, match: (u) => u.startsWith("/settings/payments") },
     { label: "HR & Payroll", href: "/payroll", icon: <IconBriefcase />, match: (u) => u.startsWith("/payroll") },
