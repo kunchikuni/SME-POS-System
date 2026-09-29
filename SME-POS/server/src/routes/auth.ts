@@ -72,6 +72,15 @@ authRoutes.get('/me', async (ctx) => {
     );
     if (!user || user.tenantId !== tenant?.id) return ctx.json({ user: null, tenant: null });
 
+    // Which till modes this business actually runs (per live branch), so the
+    // dashboard only shows mode-specific sections that apply — e.g. Kitchen
+    // only once some branch is a restaurant.
+    const branchModes = await db.branch.findMany({
+        where: { tenantId: tenant.id, deletedAt: null },
+        select: { mode: true },
+        distinct: ['mode'],
+    });
+
     return ctx.json({
         user: { id: user.id, name: user.name, role: user.role, email: user.email || null },
         tenant: tenant ? {
@@ -83,6 +92,7 @@ authRoutes.get('/me', async (ctx) => {
             trialEndsAt: tenant.trialEndsAt?.toISOString() ?? null,
             taxRateBps: tenant.taxRateBps,
             branding: tenant.branding,
+            modes: branchModes.map((b: { mode: string }) => b.mode),
         } : null,
     });
 });

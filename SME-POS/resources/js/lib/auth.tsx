@@ -30,6 +30,8 @@ export interface TenantInfo {
   trialEndsAt: string | null;
   taxRateBps: number;
   branding: Record<string, string | null> | null;
+  /** Till modes in use across live branches, e.g. ["retail"] or ["retail", "restaurant"]. */
+  modes?: string[];
 }
 
 interface AuthState {
