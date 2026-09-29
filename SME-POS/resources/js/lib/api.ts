@@ -108,6 +108,20 @@ export interface ProductListItem {
     lowStock: boolean;
 }
 
+export interface TransactionRow {
+    id: string;
+    method: string;
+    amountCents: number;
+    receivedCents: number | null;
+    sale: {
+        occurredAt: string;
+        status: string;
+        branch: { name: string } | null;
+        cashier: { name: string } | null;
+        customer: { name: string } | null;
+    } | null;
+}
+
 export interface CreditCustomer {
     id: string;
     name: string;
@@ -209,6 +223,8 @@ export interface OrderRow {
     status: string;
     cashier?: { name: string } | null;
     branch?: { name: string } | null;
+    /** Set on credit sales. */
+    customer?: { name: string } | null;
     lines: { qty: number; name: string; unitPriceCents: number }[];
     payments: { method: string; amountCents: number }[];
     voidRequest: {
@@ -345,11 +361,25 @@ export const api = {
     },
 
     orders: {
-        list: (page?: number) =>
-            get<{ sales: OrderRow[]; total: number; page: number; perPage: number }>(
-                '/orders',
-                page ? { page: String(page) } : undefined,
-            ),
+        /** With `date` (YYYY-MM-DD or "today", business local time): that day's sales + the whole day's summary. */
+        list: (params: { page?: number; date?: string; branchId?: string } = {}) =>
+            get<{
+                sales: OrderRow[]; total: number; page: number; perPage: number;
+                /** The day shown (resolved from "today"), or null for all days. */
+                date: string | null;
+                /** Today in the business's timezone. */
+                today: string;
+                summary: {
+                    sales: number;
+                    takingsCents: number;
+                    voided: number;
+                    byMethod: { method: string; amountCents: number }[];
+                } | null;
+            }>('/orders', {
+                ...(params.page ? { page: String(params.page) } : {}),
+                ...(params.date ? { date: params.date } : {}),
+                ...(params.branchId ? { branchId: params.branchId } : {}),
+            }),
         requestVoid: (saleId: string, reason: string) =>
             post<{ id: string; message: string }>(`/orders/${saleId}/void-request`, { reason }),
         pendingVoids: () => get<{ requests: PendingVoidRequest[] }>('/orders/void-requests'),
@@ -369,11 +399,19 @@ export const api = {
     },
 
     transactions: {
-        list: (page?: number) =>
-            get<{ payments: unknown[]; total: number; page: number; perPage: number; summary: unknown[] }>(
-                '/transactions',
-                page ? { page: String(page) } : undefined,
-            ),
+        /** With `date` (YYYY-MM-DD or "today", business local time): that day's payments + per-method totals. */
+        list: (params: { page?: number; date?: string; branchId?: string } = {}) =>
+            get<{
+                payments: TransactionRow[]; total: number; page: number; perPage: number;
+                /** Per-method totals over completed sales (voided sales excluded). */
+                summary: { method: string; _sum: { amountCents: number | null }; _count: number }[];
+                date: string | null;
+                today: string;
+            }>('/transactions', {
+                ...(params.page ? { page: String(params.page) } : {}),
+                ...(params.date ? { date: params.date } : {}),
+                ...(params.branchId ? { branchId: params.branchId } : {}),
+            }),
     },
 
     settings: {

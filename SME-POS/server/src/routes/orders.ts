@@ -21,23 +21,40 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db } from '../lib/db.js';
 import type { HonoVars } from '../lib/context.js';
+import { localDayRange, localToday, parseDayParam } from '../lib/businessDay.js';
 
 export const orderRoutes = new Hono<{ Variables: HonoVars }>();
 
 const CAN_APPROVE = new Set(['owner', 'manager']);
 
-// GET /orders — list, with each sale's void-request status attached
+// GET /orders?date=YYYY-MM-DD|today&branchId=&page= — list, with each sale's
+// void-request status attached. With `date`, it's one day's sales (business
+// local time) plus that whole day's summary; without, every sale, newest first.
 orderRoutes.get('/', async (ctx) => {
   const t = ctx.get('tenant');
   const page = parseInt(ctx.req.query('page') ?? '1') || 1;
   const perPage = 50;
 
+  const day = parseDayParam(ctx.req.query('date'));
+  if ('error' in day) return ctx.json({ message: day.error }, 422);
+  const date = day.date;
+  const branchId = ctx.req.query('branchId') || undefined;
+  const range = date ? localDayRange(date) : null;
+
+  const where = {
+    tenantId: t.id,
+    deletedAt: null,
+    ...(branchId ? { branchId } : {}),
+    ...(range ? { occurredAt: { gte: range.start, lt: range.end } } : {}),
+  };
+
   const [sales, total] = await Promise.all([
     db.sale.findMany({
-      where: { tenantId: t.id, deletedAt: null },
+      where,
       include: {
         cashier: { select: { name: true } },
         branch: { select: { name: true } },
+        customer: { select: { name: true } },
         lines: { select: { qty: true, name: true, unitPriceCents: true } },
         payments: true,
       },
@@ -45,8 +62,32 @@ orderRoutes.get('/', async (ctx) => {
       skip: (page - 1) * perPage,
       take: perPage,
     }),
-    db.sale.count({ where: { tenantId: t.id, deletedAt: null } }),
+    db.sale.count({ where }),
   ]);
+
+  // The day's summary covers ALL of the day's sales, not just this page.
+  // Takings count completed sales only — a voided sale was never money in.
+  let summary = null;
+  if (range) {
+    const completed = { ...where, status: 'completed' };
+    const [totals, voided, byMethod] = await Promise.all([
+      db.sale.aggregate({ where: completed, _sum: { totalCents: true }, _count: true }),
+      db.sale.count({ where: { ...where, status: 'voided' } }),
+      db.payment.groupBy({
+        by: ['method'],
+        where: { tenantId: t.id, sale: { is: completed } },
+        _sum: { amountCents: true },
+      }),
+    ]);
+    summary = {
+      sales: totals._count,
+      takingsCents: totals._sum.totalCents ?? 0,
+      voided,
+      byMethod: byMethod
+        .map((m: { method: string; _sum: { amountCents: number | null } }) => ({ method: m.method, amountCents: m._sum.amountCents ?? 0 }))
+        .sort((a: { amountCents: number }, b: { amountCents: number }) => b.amountCents - a.amountCents),
+    };
+  }
 
   // VoidRequest is deliberately relation-free (see schema docblock), so the
   // join is explicit here: one query for every request against this page's
@@ -85,7 +126,7 @@ orderRoutes.get('/', async (ctx) => {
     };
   });
 
-  return ctx.json({ sales: data, total, page, perPage });
+  return ctx.json({ sales: data, total, page, perPage, date: date ?? null, today: localToday(), summary });
 });
 
 // GET /orders/void-requests — pending queue for admin review
