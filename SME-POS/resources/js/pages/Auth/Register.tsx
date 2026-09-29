@@ -8,12 +8,19 @@ import { TENANT_DOMAIN, workspaceOrigin } from "../../lib/tenantDomain.js";
 const TRIAL_DAYS = 7;
 const API_BASE = (import.meta.env.VITE_API_URL ?? "/api") as string;
 
-const TYPES = [
-    { value: "retail", label: "Shop", icon: "🛍", hint: "Counter sales" },
-    { value: "restaurant", label: "Restaurant", icon: "🍽", hint: "Tables & kitchen" },
-    { value: "hardware", label: "Hardware", icon: "🔧", hint: "Parts & job refs" },
-    { value: "workshop", label: "Workshop", icon: "🚗", hint: "Services & jobs" },
-] as const;
+type BusinessTypeOption = { key: string; label: string; icon: string; hint: string };
+
+/**
+ * Shown until the server's list arrives (GET /api/business-types, from
+ * server/src/domain/businessTypes.ts), or if it can't be fetched — the four
+ * till types, which are always valid.
+ */
+const FALLBACK_TYPES: BusinessTypeOption[] = [
+    { key: "retail", label: "Shop", icon: "🛍", hint: "Tuckshop, general dealer" },
+    { key: "restaurant", label: "Restaurant", icon: "🍽", hint: "Tables & kitchen" },
+    { key: "hardware", label: "Hardware", icon: "🔧", hint: "Parts & job refs" },
+    { key: "workshop", label: "Workshop", icon: "🚗", hint: "Repairs, services & parts" },
+];
 
 type Availability = "idle" | "checking" | "available" | "taken" | "reserved" | "invalid";
 
@@ -38,6 +45,18 @@ export default function Register() {
     // Suggest the workspace from the business name until the owner edits it themselves.
     const [subdomainEdited, setSubdomainEdited] = useState(false);
     const [availability, setAvailability] = useState<Availability>("idle");
+    const [types, setTypes] = useState<BusinessTypeOption[]>(FALLBACK_TYPES);
+
+    // The business types the server supports (one list for sign-up, starter
+    // products and suggested categories — server/src/domain/businessTypes.ts).
+    useEffect(() => {
+        fetch(`${API_BASE}/business-types`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((body: { types?: BusinessTypeOption[] } | null) => {
+                if (body?.types?.length) setTypes(body.types);
+            })
+            .catch(() => { /* keep the fallback list */ });
+    }, []);
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -157,13 +176,13 @@ export default function Register() {
                         <div>
                             <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-2">What kind of business?</label>
                             <div className="grid grid-cols-2 gap-2">
-                                {TYPES.map((t) => (
+                                {types.map((t) => (
                                     <button
-                                        key={t.value}
+                                        key={t.key}
                                         type="button"
-                                        onClick={() => set("businessType")(t.value)}
+                                        onClick={() => set("businessType")(t.key)}
                                         className={`rounded-xl border px-3 py-2.5 text-left transition-all ${
-                                            form.businessType === t.value
+                                            form.businessType === t.key
                                                 ? "border-violet-500/60 bg-violet-500/10 ring-2 ring-violet-500/20"
                                                 : "border-hairline hover:bg-canvas"
                                         }`}
@@ -174,7 +193,7 @@ export default function Register() {
                                     </button>
                                 ))}
                             </div>
-                            <p className="mt-1 text-xs text-muted">Sets up your till for this. You can change it later per branch.</p>
+                            <p className="mt-1 text-xs text-muted">Sets up your till, product categories and example products for this.</p>
                         </div>
 
                         <Field label="Your name" value={form.ownerName} onChange={set("ownerName")} error={errors.ownerName} placeholder="Tariro Moyo" />

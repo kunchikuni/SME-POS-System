@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { applyStoredTheme } from './pos/appTheme';
 import { startInstallCapture } from './pwa/installPrompt';
+import { markUpdateAvailable } from './pwa/updates';
 
 // Must run before the first paint — this is what actually fixes the bug
 // where a light-mode user reloaded into a dark-looking page until their
@@ -25,10 +26,10 @@ startInstallCapture();
  * lose the cashier's in-progress cart (React state, not persisted).
  *
  * Instead: `registerType: 'prompt'` in vite.config.ts keeps the new SW in
- * the `waiting` state. Here we emit custom DOM events so the
- * UpdateAvailableBanner (Shared.tsx) can surface a dismissible notice. The
- * cashier taps "Update now" at a safe moment; the banner calls `updateSW()`
- * which skips waiting, activates the new SW, and reloads.
+ * the `waiting` state and records it in pwa/updates.ts, so the one
+ * UpdateNotice in App (Shared.tsx) can offer it on any screen. The cashier
+ * taps "Update now" at a safe moment, which skips waiting, activates the new
+ * SW, and reloads.
  *
  * onOfflineReady: the SW has precached the shell — the till can now cold-
  * start with no network. We emit a brief informational event (the banner
@@ -36,7 +37,7 @@ startInstallCapture();
  */
 const updateSW = registerSW({
     onNeedRefresh() {
-        window.dispatchEvent(new CustomEvent('pwa:update-available', { detail: { updateSW } }));
+        markUpdateAvailable(() => updateSW(true)); // true = reload onto the new version
     },
     onOfflineReady() {
         window.dispatchEvent(new CustomEvent('pwa:offline-ready'));

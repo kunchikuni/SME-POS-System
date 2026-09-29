@@ -24,7 +24,7 @@ import type {
     StockLevel,
     Table,
 } from '../types/contract';
-import { SyncBadge, SettingsChangedBanner, ModePill, ThemeToggle, UpdateAvailableBanner, OutboxStuckBanner, SyncedToast, InstallAppButton } from './Shared';
+import { SyncBadge, SettingsChangedBanner, ModePill, ThemeToggle, OutboxStuckBanner, SyncedToast, InstallAppButton } from './Shared';
 import { Checkout } from './Checkout';
 import { ReceiveStock } from './ReceiveStock';
 import { RecordPayment } from './RecordPayment';
@@ -184,7 +184,6 @@ export function RestaurantTill({
     if (view === 'floor') {
         return (
             <div className="min-h-dvh flex flex-col resto-floor-bg">
-                <UpdateAvailableBanner />
                 <OutboxStuckBanner />
                 <SyncedToast />
                 <SettingsChangedBanner />
@@ -364,7 +363,6 @@ export function RestaurantTill({
 
     return (
         <div className="flex min-h-dvh flex-col resto-floor-bg">
-            <UpdateAvailableBanner />
             <OutboxStuckBanner />
             <SyncedToast />
             <SettingsChangedBanner />

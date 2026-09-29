@@ -14,6 +14,7 @@ import { Hono } from 'hono';
 import crypto from 'node:crypto';
 import { db } from '../lib/db.js';
 import type { HonoVars } from '../lib/context.js';
+import { businessTypeFor } from '../domain/businessTypes.js';
 
 export const onboardingRoutes = new Hono<{ Variables: HonoVars }>();
 
@@ -32,62 +33,14 @@ onboardingRoutes.get('/', async (ctx) => {
       select: { mode: true },
     }),
   ]);
+  const type = businessTypeFor(t.mode, branch?.mode);
   return ctx.json({
     mode: branch?.mode ?? 'retail',
+    businessType: { key: type.key, label: type.label },
     steps: { products: products > 0, till: devices > 0, sale: sales > 0 },
     counts: { products, devices, sales },
   });
 });
-
-// ── Starter catalogues ───────────────────────────────────────────────────────
-// Typical items for each business type, so a new owner can ring up a real-
-// looking sale in the first minute and then edit or delete them. Prices in
-// USD cents; `qty` is opening stock (null = doesn't track stock, e.g. a
-// cooked dish or labour).
-type Starter = { name: string; category: string; priceCents: number; qty: number | null };
-
-const STARTERS: Record<string, Starter[]> = {
-  retail: [
-    { name: 'Bread (loaf)', category: 'Groceries', priceCents: 100, qty: 30 },
-    { name: 'Cooking Oil 2L', category: 'Groceries', priceCents: 380, qty: 20 },
-    { name: 'Sugar 2kg', category: 'Groceries', priceCents: 250, qty: 20 },
-    { name: 'Mealie Meal 10kg', category: 'Groceries', priceCents: 700, qty: 15 },
-    { name: 'Rice 2kg', category: 'Groceries', priceCents: 220, qty: 20 },
-    { name: 'Coke 500ml', category: 'Drinks', priceCents: 80, qty: 48 },
-    { name: 'Milk 1L', category: 'Drinks', priceCents: 110, qty: 24 },
-    { name: 'Bath Soap', category: 'Toiletries', priceCents: 60, qty: 40 },
-  ],
-  restaurant: [
-    { name: 'Sadza & Beef Stew', category: 'Mains', priceCents: 500, qty: null },
-    { name: 'Chicken & Chips', category: 'Mains', priceCents: 600, qty: null },
-    { name: 'Beef Burger', category: 'Mains', priceCents: 550, qty: null },
-    { name: 'Garden Salad', category: 'Sides', priceCents: 300, qty: null },
-    { name: 'Coke 330ml', category: 'Cold drinks', priceCents: 100, qty: 48 },
-    { name: 'Water 500ml', category: 'Cold drinks', priceCents: 80, qty: 48 },
-    { name: 'Tea', category: 'Hot drinks', priceCents: 100, qty: null },
-    { name: 'Coffee', category: 'Hot drinks', priceCents: 150, qty: null },
-  ],
-  hardware: [
-    { name: 'Cement 50kg', category: 'Building', priceCents: 1200, qty: 40 },
-    { name: 'Wire Nails 1kg', category: 'Fasteners', priceCents: 250, qty: 30 },
-    { name: 'PVA Paint 5L', category: 'Paint', priceCents: 1800, qty: 12 },
-    { name: 'PVC Pipe 50mm (6m)', category: 'Plumbing', priceCents: 900, qty: 20 },
-    { name: 'Padlock 50mm', category: 'Security', priceCents: 500, qty: 15 },
-    { name: 'Claw Hammer', category: 'Tools', priceCents: 800, qty: 10 },
-    { name: 'Wheelbarrow', category: 'Tools', priceCents: 4500, qty: 5 },
-    { name: 'Electrical Cable 2.5mm (per m)', category: 'Electrical', priceCents: 80, qty: 200 },
-  ],
-  workshop: [
-    { name: 'Labour (1 hour)', category: 'Services', priceCents: 1500, qty: null },
-    { name: 'Oil Change Service', category: 'Services', priceCents: 2500, qty: null },
-    { name: 'Wheel Balancing', category: 'Services', priceCents: 800, qty: null },
-    { name: 'Diagnostics', category: 'Services', priceCents: 1000, qty: null },
-    { name: 'Engine Oil 5L', category: 'Parts', priceCents: 2200, qty: 12 },
-    { name: 'Oil Filter', category: 'Parts', priceCents: 600, qty: 20 },
-    { name: 'Brake Pads (set)', category: 'Parts', priceCents: 1800, qty: 10 },
-    { name: 'Spark Plug', category: 'Parts', priceCents: 300, qty: 40 },
-  ],
-};
 
 // POST /onboarding/starter-products — only into an EMPTY catalogue, so it can
 // never duplicate or mix with a real one (e.g. a double-click, or pressing it
@@ -106,7 +59,9 @@ onboardingRoutes.post('/starter-products', async (ctx) => {
   });
   if (!branch) return ctx.json({ message: 'No branch found.' }, 422);
 
-  const items = STARTERS[branch.mode] ?? STARTERS.retail;
+  // Example products for this business type (domain/businessTypes.ts) — a
+  // pharmacy gets medicines, a bottle store gets drinks, not a tuckshop's list.
+  const items = businessTypeFor(t.mode, branch.mode).starters;
   const productType = branch.mode === 'restaurant' ? 'restaurant' : 'retail';
 
   // Reserve a block of SKU numbers in one atomic increment (same SKU-000001

@@ -14,8 +14,11 @@ export function tillBaseUrl(): string {
     : "/pos/";
 }
 
-const MODE_LABEL: Record<string, string> = {
-  retail: "shop", restaurant: "restaurant", hardware: "hardware store", workshop: "workshop",
+/** How to name the business in a sentence ("Your pharmacy is ready"), by business type key. */
+const KIND: Record<string, string> = {
+  retail: "shop", supermarket: "supermarket", restaurant: "restaurant", bottlestore: "bottle store",
+  pharmacy: "pharmacy", clothing: "clothing store", butchery: "butchery", hardware: "hardware store",
+  workshop: "workshop", salon: "salon",
 };
 
 /**
@@ -70,6 +73,7 @@ export function GetSelling({ welcome }: { welcome: boolean }) {
 
   if (!data || dismissed) return null;
   const { steps, mode } = data;
+  const kind = KIND[data.businessType?.key ?? mode] ?? "store";
   const done = [steps.products, steps.till, steps.sale].filter(Boolean).length;
   if (done === 3 && !welcome) return null; // finished — get out of the way
 
@@ -78,7 +82,7 @@ export function GetSelling({ welcome }: { welcome: boolean }) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold text-brand-700">
-            {welcome && done === 0 ? `Your ${MODE_LABEL[mode] ?? "store"} is ready 🎉` : "Get selling"}
+            {welcome && done === 0 ? `Your ${kind} is ready 🎉` : "Get selling"}
             <span className="ml-2 rounded-full bg-surface px-2 py-0.5 text-xs font-semibold text-brand-700">{done}/3</span>
           </h2>
           <p className="mt-0.5 text-sm text-brand-700/80">
@@ -102,7 +106,7 @@ export function GetSelling({ welcome }: { welcome: boolean }) {
             </div>
           )}
           {!steps.products && (
-            <p className="mt-1.5 text-xs text-muted">Examples are typical items for a {MODE_LABEL[mode] ?? "store"}, with prices and stock — edit or delete them any time.</p>
+            <p className="mt-1.5 text-xs text-muted">Examples are typical items for a {kind}, with prices and stock — edit or delete them any time.</p>
           )}
           {starterError && <p className="mt-1 text-xs text-red-600">{starterError}</p>}
         </Step>

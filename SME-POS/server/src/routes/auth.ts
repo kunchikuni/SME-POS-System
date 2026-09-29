@@ -13,6 +13,7 @@ import bcrypt from 'bcryptjs';
 import { db } from '../lib/db.js';
 import { runWithTenant, withoutTenantScope } from '../lib/tenantScope.js';
 import { issueHandoff, redeemHandoff } from '../lib/handoff.js';
+import { BUSINESS_TYPES, BUSINESS_TYPE_KEYS, businessTypeFor } from '../domain/businessTypes.js';
 import type { HonoVars } from '../lib/context.js';
 
 export const authRoutes = new Hono<{ Variables: HonoVars }>();
@@ -126,7 +127,7 @@ const registerHandler = async (ctx: Context<{ Variables: HonoVars }>) => {
             ownerName: z.string().trim().min(2, 'Enter your name.').max(80),
             subdomain: z.string().trim().toLowerCase().min(3, 'At least 3 characters.').max(30)
                 .regex(WORKSPACE_RE, 'Letters, numbers and dashes only (not at the start or end).'),
-            businessType: z.enum(['retail', 'restaurant', 'hardware', 'workshop']),
+            businessType: z.enum(BUSINESS_TYPE_KEYS), // domain/businessTypes.ts
             email: z.string().trim().toLowerCase().email('Enter a valid email.'),
             password: z.string().min(8, 'At least 8 characters.'),
             pin: z.string().regex(/^\d{4}$/, 'Your till PIN is 4 digits.'),
@@ -141,6 +142,7 @@ const registerHandler = async (ctx: Context<{ Variables: HonoVars }>) => {
         return ctx.json({ message: 'That workspace name is taken.', errors: { subdomain: 'Already taken — try another.' } }, 422);
     }
 
+    const type = businessTypeFor(data.businessType);
     const tenantId = crypto.randomUUID();
     const userId = crypto.randomUUID();
     const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
@@ -169,7 +171,9 @@ const registerHandler = async (ctx: Context<{ Variables: HonoVars }>) => {
                     subdomain: data.subdomain,
                     plan: 'trial',
                     trialEndsAt,
-                    mode: data.businessType, // vestigial, kept in step with the branch
+                    // The business type (pharmacy, bottle store…) — see
+                    // domain/businessTypes.ts for why it lives in this column.
+                    mode: type.key,
                 },
             }),
             db.branch.create({
@@ -178,10 +182,16 @@ const registerHandler = async (ctx: Context<{ Variables: HonoVars }>) => {
                     tenantId,
                     name: 'Main Branch',
                     isDefault: true,
-                    // Per-branch mode is what the till opens to — a restaurant
-                    // gets the floor plan and kitchen flow from its first sale.
-                    mode: data.businessType,
+                    // Per-branch mode is which till it opens to — a restaurant
+                    // gets the floor plan and kitchen flow from its first sale;
+                    // a pharmacy or bottle store gets the retail till.
+                    mode: type.tillMode,
                 },
+            }),
+            // Start with the product categories that fit this kind of
+            // business, so adding the first product is a pick from a list.
+            db.category.createMany({
+                data: type.categories.map((name) => ({ id: crypto.randomUUID(), tenantId, name })),
             }),
             db.user.create({
                 data: {
@@ -230,3 +240,8 @@ export const registerRoutes = new Hono<{ Variables: HonoVars }>();
 // still /api/register, into a router that only knows /register — so every
 // sign-up 404'd before reaching the handler.
 registerRoutes.post('/register', registerHandler);
+
+// GET /business-types — central: what the sign-up form offers.
+registerRoutes.get('/business-types', (ctx) =>
+    ctx.json({ types: BUSINESS_TYPES.map(({ key, label, icon, hint }) => ({ key, label, icon, hint })) }),
+);

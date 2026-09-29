@@ -105,6 +105,9 @@ export default function ProductsIndex() {
         </div>
         <div className="flex gap-2">
           <a href={api.products.export()} className="btn-secondary text-sm">Export CSV</a>
+          {/* The only way into Categories (sidebar "Inventory" lands here) — the
+              page existed, with suggested categories, but nothing linked to it. */}
+          <Link to="/categories" className="btn-secondary text-sm">Categories</Link>
           <Link to="/products/barcodes" className="btn-secondary text-sm">Barcodes</Link>
           <Link to="/products/import" className="btn-secondary text-sm">Import</Link>
           <Link to="/products/create" className="btn-primary text-sm">+ New Product</Link>

@@ -38,7 +38,9 @@ model Tenant {
   // Payroll (added via migration 2026_01_11_000001)
   nssaRateBps   Int       @default(0) @map("nssa_rate_bps")
   nssaCeilingCents Int    @default(0) @map("nssa_ceiling_cents")
-  // Vestigial mode column (kept for migration compatibility; per-branch mode is canonical)
+  // The business TYPE (retail, supermarket, pharmacy, bottlestore… — see
+  // server/src/domain/businessTypes.ts): drives suggested categories and
+  // starter products. Which till a branch opens to is branches.mode.
   mode          String    @default("retail")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")

@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSyncStatus } from './useSyncStatus';
 import { syncManager } from '../sync/syncManager';
 import type { TenantMode } from '../types/contract';
 import { getAppTheme, setAppTheme, type AppTheme } from '../pos/appTheme';
 import { promptInstall, useInstallState } from '../pwa/installPrompt';
+import { applyUpdate, useUpdateAvailable } from '../pwa/updates';
 
 /** Live connectivity + outbox indicator, shown in the till header. */
 export function SyncBadge() {
@@ -48,46 +49,82 @@ export function SettingsChangedBanner() {
     );
 }
 
+/** How long "Later" hides the update notice before offering it again. */
+const UPDATE_SNOOZE_MS = 60 * 60 * 1000;
+
 /**
- * Surfaces a new PWA version without silently reloading mid-sale.
+ * "A new version is ready" — one floating card for the whole till app
+ * (mounted once in App, so it also shows on the pairing and PIN screens).
  *
- * Listens for the `pwa:update-available` DOM event emitted by main.tsx when
- * the service worker has a waiting update. The cashier taps "Update now" at
- * a safe moment; calling `updateSW()` skips waiting and reloads. Using the
- * same dismissible pattern as SettingsChangedBanner so the UX is consistent.
+ * Updating reloads the page, and the cart lives in React state — so this
+ * never updates on its own (`registerType: 'prompt'`), it says so plainly,
+ * and "Later" only snoozes it for an hour rather than hiding it for the
+ * rest of the day. Queued sales are safe either way: they're in IndexedDB.
  *
- * This is why `registerType: 'prompt'` exists in vite.config.ts — `autoUpdate`
- * would activate the SW immediately, losing the React cart state.
+ * Replaces UpdateAvailableBanner: a thin strip in each till's header that
+ * listened for a one-time DOM event and so never appeared when the update
+ * arrived while the pairing/PIN screen was showing, and whose "Later" hid it
+ * until the next reload.
  */
-export function UpdateAvailableBanner() {
-    const [updateSW, setUpdateSW] = useState<(() => Promise<void>) | null>(null);
-    const [dismissed, setDismissed] = useState(false);
+export function UpdateNotice() {
+    const available = useUpdateAvailable();
+    const [snoozedUntil, setSnoozedUntil] = useState(0);
+    const [updating, setUpdating] = useState(false);
+    const [, forceRender] = useState(0);
 
+    // Re-show once the snooze runs out.
     useEffect(() => {
-        function onUpdateAvailable(e: Event) {
-            const detail = (e as CustomEvent<{ updateSW: () => Promise<void> }>).detail;
-            setUpdateSW(() => detail.updateSW);
-        }
-        window.addEventListener('pwa:update-available', onUpdateAvailable);
-        return () => window.removeEventListener('pwa:update-available', onUpdateAvailable);
-    }, []);
+        if (!snoozedUntil) return;
+        const timer = setTimeout(() => forceRender((n) => n + 1), Math.max(0, snoozedUntil - Date.now()));
+        return () => clearTimeout(timer);
+    }, [snoozedUntil]);
 
-    const handleUpdate = useCallback(() => {
-        void updateSW?.();
-    }, [updateSW]);
+    if (!available || Date.now() < snoozedUntil) return null;
 
-    if (!updateSW || dismissed) return null;
+    function update() {
+        setUpdating(true);
+        void applyUpdate();
+    }
 
     return (
-        <div className="flex items-center justify-between gap-3 border-b border-blue-500/20 bg-blue-500/10 px-4 py-2 text-sm text-blue-300 backdrop-blur-sm">
-            <span>⬆ A new version of Wivae POS is ready.</span>
-            <div className="flex shrink-0 items-center gap-3">
-                <button onClick={handleUpdate} className="font-semibold underline underline-offset-2">
-                    Update now
-                </button>
-                <button onClick={() => setDismissed(true)} className="text-blue-500 hover:text-blue-300">
-                    Later
-                </button>
+        <div
+            role="status"
+            aria-live="polite"
+            className="fixed inset-x-0 bottom-4 z-[60] flex justify-center px-4 anim-slide-up"
+        >
+            <div className="pos-bg flex w-full max-w-md items-start gap-3 rounded-2xl p-4 shadow-2xl ring-1 ring-white/10">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-[0_0_16px_rgba(124,58,237,0.45)]">
+                    {/* up-arrow-in-circle */}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden>
+                        <path d="M12 19V5M5 12l7-7 7 7" />
+                    </svg>
+                </div>
+                <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-white">Update ready</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-slate-400">
+                        A new version of Wivae POS is ready. Updating reloads the till, so finish the
+                        sale in progress first — queued sales are kept.
+                    </p>
+                    <div className="mt-3 flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={update}
+                            disabled={updating}
+                            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-indigo-500/25 transition-opacity hover:opacity-90 disabled:opacity-70"
+                        >
+                            {updating && <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white" />}
+                            {updating ? 'Updating…' : 'Update now'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setSnoozedUntil(Date.now() + UPDATE_SNOOZE_MS)}
+                            disabled={updating}
+                            className="rounded-xl px-3 py-2 text-xs font-medium text-slate-400 transition-colors hover:bg-white/6 hover:text-slate-200"
+                        >
+                            Later
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     );

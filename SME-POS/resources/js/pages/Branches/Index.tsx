@@ -6,13 +6,15 @@ import { api, type Branch } from "../../lib/api.js";
 const MODE_LABELS: Record<string, string> = {
   retail: "Retail",
   restaurant: "Restaurant",
-  both: "Both (Hybrid)",
+  hardware: "Hardware",
+  workshop: "Workshop",
 };
 
 const MODE_TINT: Record<string, string> = {
   retail: "bg-blue-50 text-blue-700",
   restaurant: "bg-amber-50 text-amber-700",
-  both: "bg-purple-50 text-purple-700",
+  hardware: "bg-slate-100 text-slate-700",
+  workshop: "bg-purple-50 text-purple-700",
 };
 
 function Flash({ message, type }: { message: string; type: "success" | "error" }) {
@@ -203,7 +205,8 @@ export default function BranchesIndex() {
                 className="w-full rounded-xl border border-hairline px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50">
                 <option value="retail">Retail</option>
                 <option value="restaurant">Restaurant</option>
-                <option value="both">Both (Hybrid)</option>
+                <option value="hardware">Hardware</option>
+                <option value="workshop">Workshop</option>
               </select>
             </div>
           </div>
@@ -229,7 +232,8 @@ export default function BranchesIndex() {
                 className="w-full rounded-xl border border-hairline px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50">
                 <option value="retail">Retail</option>
                 <option value="restaurant">Restaurant</option>
-                <option value="both">Both (Hybrid)</option>
+                <option value="hardware">Hardware</option>
+                <option value="workshop">Workshop</option>
               </select>
             </div>
           </div>
