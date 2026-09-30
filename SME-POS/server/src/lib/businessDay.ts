@@ -12,6 +12,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** The business's UTC offset in minutes (Zimbabwe: +120). For SQL that buckets rows by local day. */
+export function localOffsetMinutes(): number {
+  return OFFSET_MIN;
+}
+
 /** Today's date (YYYY-MM-DD) in the business's timezone. */
 export function localToday(): string {
   return new Date(Date.now() + OFFSET_MIN * 60_000).toISOString().slice(0, 10);
