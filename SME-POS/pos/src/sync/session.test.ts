@@ -57,6 +57,13 @@ describe('mergeSessionInfo', () => {
     expect(getSession()?.branch.mode).toBe('restaurant');
   });
 
+  it('stores the branch kind (e.g. "Butchery") from an older session silently — a label is not a settings change', () => {
+    saveSession(baseSession()); // paired before the server sent `kind`
+    const changed = mergeSessionInfo(baseSession().tenant, { ...baseSession().branch, kind: { label: 'Butchery', icon: '🥩' } });
+    expect(changed).toBe(false); // no "reload" notice for a label
+    expect(getSession()?.branch.kind).toEqual({ label: 'Butchery', icon: '🥩' });
+  });
+
   it('detects a tax rate change independently of mode', () => {
     saveSession(baseSession());
     const changed = mergeSessionInfo({ ...baseSession().tenant, taxRateBps: 0 }, baseSession().branch);

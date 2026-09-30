@@ -5,12 +5,15 @@ import crypto from 'node:crypto';
 import { db } from '../lib/db.js';
 import { canAddBranch } from '../domain/billing/entitlementService.js';
 import type { HonoVars } from '../lib/context.js';
+import { branchKind } from '../domain/businessTypes.js';
 export const branchRoutes = new Hono<{ Variables: HonoVars }>();
 const ADMIN_ROLES = new Set(['owner', 'manager']);
 
 branchRoutes.get('/', async (ctx) => {
   const t = ctx.get('tenant');
-  const branches = await db.branch.findMany({ where: { tenantId: t.id, deletedAt: null }, orderBy: { createdAt: 'asc' } });
+  const rows = await db.branch.findMany({ where: { tenantId: t.id, deletedAt: null }, orderBy: { createdAt: 'asc' } });
+  // `kind` = what each branch is called ("Butchery"), alongside `mode` (the till layout it runs).
+  const branches = rows.map((b: typeof rows[number]) => ({ ...b, kind: branchKind(t.mode, b.mode) }));
   return ctx.json({ branches });
 });
 branchRoutes.post('/', async (ctx) => {

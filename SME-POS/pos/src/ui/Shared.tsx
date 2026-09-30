@@ -335,14 +335,18 @@ export function ThemeToggle() {
  * something available from a device that's only ever authenticated as "some
  * paired till," regardless of whose PIN is currently active on it.
  */
-export function ModePill({ mode }: { mode: TenantMode }) {
+export function ModePill({ mode, kind }: { mode: TenantMode; kind?: { icon: string; label: string } }) {
     const labels: Record<TenantMode, { icon: string; label: string }> = {
         retail:     { icon: '🛍',  label: 'Retail' },
         restaurant: { icon: '🍽',  label: 'Restaurant' },
         hardware:   { icon: '🔧', label: 'Hardware' },
         workshop:   { icon: '🔩', label: 'Workshop' },
     };
-    const current = labels[mode] ?? labels.retail;
+    // `kind` is what the business actually is ("Butchery", "Pharmacy"…). The
+    // mode alone can't say: a butchery, bottle store and pharmacy all run the
+    // retail till, so they all used to read "Retail". Without `kind` (a till
+    // paired before the server sent it), fall back to the mode's own label.
+    const current = kind ?? labels[mode] ?? labels.retail;
 
     return (
         <div

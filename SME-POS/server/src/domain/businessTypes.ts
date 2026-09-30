@@ -175,6 +175,14 @@ export const BUSINESS_TYPES: BusinessType[] = [
 
 export const BUSINESS_TYPE_KEYS = BUSINESS_TYPES.map((b) => b.key) as [string, ...string[]];
 
+/** What to call a branch when it isn't running its business's main type. */
+const TILL_MODE_KIND: Record<string, { label: string; icon: string }> = {
+  retail: { label: 'Shop', icon: '🛍' },
+  restaurant: { label: 'Restaurant', icon: '🍽' },
+  hardware: { label: 'Hardware', icon: '🔧' },
+  workshop: { label: 'Workshop', icon: '🚗' },
+};
+
 const BY_KEY = new Map(BUSINESS_TYPES.map((b) => [b.key, b]));
 
 /**
@@ -184,4 +192,18 @@ const BY_KEY = new Map(BUSINESS_TYPES.map((b) => [b.key, b]));
  */
 export function businessTypeFor(stored: string | null | undefined, branchMode?: string | null): BusinessType {
   return BY_KEY.get(stored ?? '') ?? BY_KEY.get(branchMode ?? '') ?? BUSINESS_TYPES[0];
+}
+
+/**
+ * The label + icon to show for ONE branch: "Butchery" for a butchery's
+ * branches, not just "Retail" (the till mode several business types share).
+ *
+ * A branch only takes the business type's name while it runs that type's
+ * till: a pharmacy that opens a restaurant branch shows "Restaurant" for that
+ * branch, not "Pharmacy".
+ */
+export function branchKind(tenantMode: string | null | undefined, branchMode: string): { label: string; icon: string } {
+  const type = businessTypeFor(tenantMode, branchMode);
+  if (type.tillMode === branchMode) return { label: type.label, icon: type.icon };
+  return TILL_MODE_KIND[branchMode] ?? TILL_MODE_KIND.retail;
 }

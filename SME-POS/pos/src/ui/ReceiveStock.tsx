@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { enqueue } from '../sync/outbox';
 import { syncManager } from '../sync/syncManager';
 import { db } from '../db/database';
-import type { Product, StockLevel } from '../types/contract';
+import { browseProducts, searchProducts } from '../pos/productSearch';
+import type { Category, Product, StockLevel } from '../types/contract';
 
 /**
  * Offline restocking — the till-side counterpart to the dashboard's manual
@@ -36,13 +38,17 @@ export function ReceiveStock({
     const currentQty = (productId: string) =>
         stockRows.find((s) => s.product_id === productId)?.quantity ?? 0;
 
-    const results = useMemo(() => {
-        const q = search.trim().toLowerCase();
-        if (!q) return [];
-        return products
-            .filter((p) => p.name.toLowerCase().includes(q) || p.barcode?.toLowerCase() === q)
-            .slice(0, 8);
-    }, [search, products]);
+    // Categories only for searching by them ("beef", "drinks") and labelling rows.
+    const categories = useLiveQuery(() => db.categories.toArray(), [], [] as Category[]);
+    const categoryName = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories]);
+
+    const searching = search.trim() !== '';
+    // Before anything is typed, list the catalogue A–Z so the cashier can see
+    // what's there (a till with few products shows all of them).
+    const results = useMemo(
+        () => (searching ? searchProducts(products, categories, search) : browseProducts(products)),
+        [searching, search, products, categories],
+    );
 
     async function submit() {
         if (!selected) return;
@@ -107,7 +113,7 @@ export function ReceiveStock({
                                 autoFocus
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
-                                placeholder="Search product or scan barcode…"
+                                placeholder="Search by name, category or scan barcode…"
                                 className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-slate-600 outline-none focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/20 transition-all"
                             />
                             {results.length > 0 && (
@@ -116,17 +122,30 @@ export function ReceiveStock({
                                         <li key={p.id}>
                                             <button
                                                 onClick={() => setSelected(p)}
-                                                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/6 transition-colors"
+                                                className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/6 transition-colors"
                                             >
-                                                <span>{p.name}</span>
-                                                <span className="text-xs text-slate-500">On hand: {currentQty(p.id)}</span>
+                                                <span className="min-w-0">
+                                                    <span className="block truncate">{p.name}</span>
+                                                    {p.category_id && categoryName.get(p.category_id) && (
+                                                        <span className="block text-xs text-slate-500">{categoryName.get(p.category_id)}</span>
+                                                    )}
+                                                </span>
+                                                <span className="shrink-0 text-xs text-slate-500">On hand: {currentQty(p.id)}</span>
                                             </button>
                                         </li>
                                     ))}
                                 </ul>
                             )}
-                            {search.trim() && results.length === 0 && (
-                                <p className="mt-2 text-xs text-slate-500">No product matches "{search}".</p>
+                            {searching && results.length === 0 && (
+                                <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                                    No product matches "{search}". If it's new, add it in the dashboard first
+                                    (Products → New product, or Suggested products) — it appears here after the next sync.
+                                </p>
+                            )}
+                            {!searching && results.length === 0 && (
+                                <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                                    There are no products yet. Add some in the dashboard (Products), then this till will show them after it syncs.
+                                </p>
                             )}
                         </>
                     ) : (

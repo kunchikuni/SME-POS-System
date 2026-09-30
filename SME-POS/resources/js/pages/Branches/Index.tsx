@@ -136,7 +136,7 @@ export default function BranchesIndex() {
               <tr className="border-b border-hairline bg-canvas text-left text-xs font-semibold uppercase tracking-widest text-muted">
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Address</th>
-                <th className="px-4 py-3">Mode</th>
+                <th className="px-4 py-3">Type</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3"></th>
               </tr>
@@ -156,8 +156,12 @@ export default function BranchesIndex() {
                   <td className="px-4 py-3 text-muted">{b.address ?? "—"}</td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${MODE_TINT[b.mode] ?? ""}`}>
-                      {MODE_LABELS[b.mode] ?? b.mode}
+                      {b.kind ? `${b.kind.icon} ${b.kind.label}` : MODE_LABELS[b.mode] ?? b.mode}
                     </span>
+                    {/* The till layout it runs — shown when it differs from the name ("Butchery" runs the Retail till). */}
+                    {b.kind && b.kind.label !== (MODE_LABELS[b.mode] ?? b.mode) && (
+                      <span className="mt-0.5 block text-xs text-muted">{MODE_LABELS[b.mode] ?? b.mode} till</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${b.isActive ? "bg-green-50 text-green-700" : "bg-canvas text-muted"}`}>
@@ -200,7 +204,7 @@ export default function BranchesIndex() {
             <Field label="Branch name" value={form.name} onChange={(v) => setForm(f => ({ ...f, name: v }))} error={createErrors.name} />
             <Field label="Address (optional)" value={form.address} onChange={(v) => setForm(f => ({ ...f, address: v }))} />
             <div>
-              <label className="block text-xs font-semibold text-muted mb-1">Mode</label>
+              <label className="block text-xs font-semibold text-muted mb-1">Till layout</label>
               <select value={form.mode} onChange={(e) => setForm(f => ({ ...f, mode: e.target.value }))}
                 className="w-full rounded-xl border border-hairline px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50">
                 <option value="retail">Retail</option>
@@ -227,7 +231,7 @@ export default function BranchesIndex() {
             <Field label="Branch name" value={form.name} onChange={(v) => setForm(f => ({ ...f, name: v }))} error={updateErrors.name} />
             <Field label="Address (optional)" value={form.address} onChange={(v) => setForm(f => ({ ...f, address: v }))} />
             <div>
-              <label className="block text-xs font-semibold text-muted mb-1">Mode</label>
+              <label className="block text-xs font-semibold text-muted mb-1">Till layout</label>
               <select value={form.mode} onChange={(e) => setForm(f => ({ ...f, mode: e.target.value }))}
                 className="w-full rounded-xl border border-hairline px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50">
                 <option value="retail">Retail</option>

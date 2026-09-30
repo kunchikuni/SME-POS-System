@@ -77,6 +77,11 @@ export function mergeSessionInfo(
     // construction as more session fields get added later (this has already
     // had to be extended once, for mode; no reason to keep doing that by hand).
     saveSession({ ...current, tenant, branch: { ...current.branch, ...branch } });
+  } else if (JSON.stringify(current.branch.kind ?? null) !== JSON.stringify(branch.kind ?? null)) {
+    // The branch's display name ("Butchery") is cosmetic: store it so a till
+    // paired before it existed picks it up, but don't report a settings
+    // change — that raises the "reload" notice, which a label doesn't merit.
+    saveSession({ ...current, branch: { ...current.branch, kind: branch.kind } });
   }
 
   return changed;

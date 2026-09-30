@@ -108,6 +108,15 @@ export interface ProductListItem {
     lowStock: boolean;
 }
 
+export interface SuggestedProduct {
+    name: string;
+    category: string;
+    /** The example price; the owner can change it before adding. */
+    priceCents: number;
+    /** false for services and cooked dishes that don't track stock. */
+    tracked: boolean;
+}
+
 export interface TransactionRow {
     id: string;
     method: string;
@@ -168,7 +177,10 @@ export interface Branch {
     address: string | null;
     isDefault: boolean;
     isActive: boolean;
+    /** Till layout: retail / restaurant / hardware / workshop. */
     mode: string;
+    /** What the branch is called — "Butchery", "Pharmacy"… — since several types share the retail till. */
+    kind?: { label: string; icon: string };
     branchId?: string | null;
 }
 
@@ -301,6 +313,12 @@ export const api = {
             return uploadFile<{ message: string; created: number; updated: number; skipped: number }>('/products/import', formData);
         },
         barcodes: () => get<{ products: { id: string; name: string; sku: string; code: string; price: string }[] }>('/products/barcodes'),
+        /** This business type's ready-made products the business doesn't have yet. */
+        suggestions: () =>
+            get<{ businessType: string; suggestions: SuggestedProduct[] }>('/products/suggestions'),
+        /** Adds the named suggestions (optionally at the owner's own price), with no opening stock. */
+        addSuggestions: (items: { name: string; priceCents?: number }[]) =>
+            post<{ added: string[]; message: string }>('/products/suggestions', { items }),
     },
 
     categories: {
