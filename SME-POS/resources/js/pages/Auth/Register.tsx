@@ -135,6 +135,7 @@ export default function Register() {
         invalid: { text: "3–30 letters, numbers or dashes", cls: "text-amber-600" },
     };
     const note = availabilityNote[availability];
+    const selectedType = types.find((t) => t.key === form.businessType);
 
     return (
         <div className="grid min-h-screen place-items-center bg-canvas p-4 sm:p-6 relative overflow-hidden">
@@ -174,26 +175,23 @@ export default function Register() {
                         </div>
 
                         <div>
-                            <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-2">What kind of business?</label>
-                            <div className="grid grid-cols-2 gap-2">
+                            <label htmlFor="business-type" className="block text-xs font-semibold uppercase tracking-widest text-muted mb-2">What kind of business?</label>
+                            {/* A dropdown: the list is ten types long now, too many for a grid of cards.
+                                Opaque background + styled options so the open list stays readable in dark mode. */}
+                            <select
+                                id="business-type"
+                                value={form.businessType}
+                                onChange={(e) => set("businessType")(e.target.value)}
+                                className="w-full rounded-xl border border-hairline bg-surface px-4 py-3 text-sm text-ink outline-none focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/20 transition-all [&>option]:bg-surface [&>option]:text-ink"
+                            >
                                 {types.map((t) => (
-                                    <button
-                                        key={t.key}
-                                        type="button"
-                                        onClick={() => set("businessType")(t.key)}
-                                        className={`rounded-xl border px-3 py-2.5 text-left transition-all ${
-                                            form.businessType === t.key
-                                                ? "border-violet-500/60 bg-violet-500/10 ring-2 ring-violet-500/20"
-                                                : "border-hairline hover:bg-canvas"
-                                        }`}
-                                    >
-                                        <span className="text-lg">{t.icon}</span>
-                                        <span className="ml-1.5 text-sm font-semibold text-ink">{t.label}</span>
-                                        <span className="block text-xs text-muted">{t.hint}</span>
-                                    </button>
+                                    <option key={t.key} value={t.key}>{t.icon} {t.label}</option>
                                 ))}
-                            </div>
-                            <p className="mt-1 text-xs text-muted">Sets up your till, product categories and example products for this.</p>
+                            </select>
+                            <p className="mt-1.5 text-xs text-muted">
+                                {selectedType?.hint && <><span className="font-medium text-ink">{selectedType.hint}.</span>{" "}</>}
+                                Sets up your till, product categories and example products for this.
+                            </p>
                         </div>
 
                         <Field label="Your name" value={form.ownerName} onChange={set("ownerName")} error={errors.ownerName} placeholder="Tariro Moyo" />
