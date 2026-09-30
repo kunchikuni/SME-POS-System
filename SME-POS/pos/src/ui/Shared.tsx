@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSyncStatus } from './useSyncStatus';
+import { TasksButton } from './TasksButton';
 import { syncManager } from '../sync/syncManager';
 import type { TenantMode } from '../types/contract';
 import { getAppTheme, setAppTheme, type AppTheme } from '../pos/appTheme';
@@ -374,8 +375,9 @@ const END_SHIFT_BTN = 'rounded-lg px-3 py-1.5 text-xs font-medium text-red-400/8
  * RetailTill: a delivery or a repayment has no payment total to cross-check
  * it the way a sale does, so it needs the trust of a manual adjustment.
  */
-export function TillHeaderButtons({ isManager, onTasks, onReceiveStock, onRecordPayment, onPrinter, onEndShift }: {
+export function TillHeaderButtons({ isManager, cashierId, onTasks, onReceiveStock, onRecordPayment, onPrinter, onEndShift }: {
     isManager: boolean;
+    cashierId: string | null;
     onTasks: () => void;
     onReceiveStock: () => void;
     onRecordPayment: () => void;
@@ -384,7 +386,7 @@ export function TillHeaderButtons({ isManager, onTasks, onReceiveStock, onRecord
 }) {
     return (
         <>
-            <button onClick={onTasks} className={HEADER_BTN}>Tasks</button>
+            <TasksButton cashierId={cashierId} onClick={onTasks} />
             {isManager && <button onClick={onReceiveStock} className={HEADER_BTN}>Receive stock</button>}
             {isManager && <button onClick={onRecordPayment} className={HEADER_BTN}>Record payment</button>}
             <button onClick={onPrinter} className={HEADER_BTN}>Printer</button>

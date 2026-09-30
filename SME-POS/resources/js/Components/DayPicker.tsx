@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { DatePicker } from "./DatePicker.js";
 
 /**
  * One-day-at-a-time browsing, shared by Orders and Transactions.
@@ -70,13 +71,17 @@ export function DayPicker({ shownDate, today, onDay, branches, branchFilter, onB
         disabled={!shownDate}
         className="btn-secondary text-xs disabled:opacity-40"
       >◀ Previous day</button>
-      <input
-        type="date"
+      {/* Our own calendar (not the browser's native date picker): themed,
+          dark-mode aware, and "today" is the BUSINESS's today. A sales day is
+          never in the future, so those days are disabled. */}
+      <DatePicker
         value={shownDate ?? ""}
         max={today ?? undefined}
-        onChange={(e) => e.target.value && onDay(e.target.value)}
-        className="rounded-xl border border-hairline bg-surface px-3 py-1.5 text-sm"
-        aria-label="Day"
+        today={today ?? undefined}
+        allowClear={false}
+        placeholder="Pick a day"
+        onChange={(d) => d && onDay(d)}
+        className="w-44"
       />
       <button
         onClick={() => shownDate && onDay(shiftDay(shownDate, 1))}
