@@ -18,8 +18,16 @@ export function workspaceOrigin(subdomain: string): string {
     return `${window.location.protocol}//${subdomain}.${TENANT_DOMAIN}${port}`;
 }
 
-/** The central (no-workspace) site, where sign-up lives. */
+/**
+ * The central (no-workspace) app address, where sign-up lives.
+ *
+ * Dev: the bare domain IS the dashboard server. Production: the bare domain is
+ * the static marketing site, which has no /register — the app's central
+ * address is app.<domain> ("app" is a reserved workspace name), the same
+ * address the marketing site's PUBLIC_APP_URL points at.
+ */
 export function centralOrigin(): string {
     const port = window.location.port ? `:${window.location.port}` : "";
-    return `${window.location.protocol}//${TENANT_DOMAIN}${port}`;
+    const host = import.meta.env.DEV ? TENANT_DOMAIN : `app.${TENANT_DOMAIN}`;
+    return `${window.location.protocol}//${host}${port}`;
 }
