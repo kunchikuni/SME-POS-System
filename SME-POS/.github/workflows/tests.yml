@@ -1,64 +1,69 @@
 name: tests
 
+# Runs on every PR and push to protected branches.
+# Pipeline: install → type-check → POS unit tests → server build → dashboard build.
+
 on:
   push:
     branches:
       - develop
       - main
       - master
-      - workos
+      - 'feat/**'
   pull_request:
     branches:
       - develop
       - main
       - master
-      - workos
 
 permissions:
   contents: read
 
 jobs:
   ci:
+    name: Type-check, test & build
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        php-version: ['8.3', '8.4', '8.5']
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
-        with:
-          php-version: ${{ matrix.php-version }}
-          tools: composer:v2
-          coverage: xdebug
-
-      - name: Setup Node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm'
 
-      - name: Install Node Dependencies
-        run: npm i
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Install Dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+      # ── Prisma client must be generated before tsc runs ─────────────────────
+      # server/src/generated/prisma/ is .gitignored — tsc fails if it's absent.
+      - name: Generate Prisma client
+        run: npx prisma generate
 
-      - name: Copy Environment File
-        run: cp .env.example .env
+      # ── Type checking ────────────────────────────────────────────────────────
+      - name: Type-check POS
+        run: npm run pos:check
 
-      - name: Generate Application Key
-        run: php artisan key:generate
+      - name: Type-check dashboard
+        run: npx tsc --noEmit
 
-      - name: Build Assets
+      - name: Type-check server
+        run: npm run server:build
+
+      # ── Unit tests ───────────────────────────────────────────────────────────
+      - name: Run POS unit tests
+        run: npm run pos:test
+
+      # ── Build verification ───────────────────────────────────────────────────
+      # Building the dashboard SPA confirms Vite + Rollup can bundle the full
+      # dependency graph — catches import errors tsc misses (dynamic imports,
+      # CSS-in-JS, asset references).
+      - name: Build dashboard SPA
         run: npm run build
 
-      - name: Run Type Analysis
-        run: composer types:check
-
-      - name: Tests
-        run: php artisan test
+      - name: Build POS PWA
+        run: npm run pos:build

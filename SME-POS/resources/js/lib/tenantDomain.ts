@@ -7,8 +7,10 @@
  * VITE_TENANT_DOMAIN to the real root domain (must match the server's
  * TENANT_DOMAIN).
  */
+// `||`, not `??`: a Docker build without the build argument sets this to an
+// EMPTY string, which `??` would keep — giving workspace links like "spider."
 export const TENANT_DOMAIN: string =
-    import.meta.env.VITE_TENANT_DOMAIN ?? (import.meta.env.DEV ? "localhost" : "wivae.com");
+    import.meta.env.VITE_TENANT_DOMAIN || (import.meta.env.DEV ? "localhost" : "wivae.com");
 
 /** Keeps this page's protocol and (dev) port, e.g. http://spider.localhost:5173 */
 export function workspaceOrigin(subdomain: string): string {
