@@ -15,6 +15,7 @@ import crypto from 'node:crypto';
 import { db } from '../lib/db.js';
 import type { HonoVars } from '../lib/context.js';
 import { businessTypeFor } from '../domain/businessTypes.js';
+import { addStarters, missingStarters } from '../domain/catalogue.js';
 
 export const onboardingRoutes = new Hono<{ Variables: HonoVars }>();
 
@@ -53,66 +54,15 @@ onboardingRoutes.post('/starter-products', async (ctx) => {
   if ((await db.product.count({ where: { tenantId: t.id, deletedAt: null } })) > 0) {
     return ctx.json({ message: 'You already have products — the starter set is only for an empty catalogue.' }, 422);
   }
-  const branch = await db.branch.findFirst({
-    where: { tenantId: t.id, deletedAt: null },
-    orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
-  });
+  const { type, branch, missing } = await missingStarters(t);
   if (!branch) return ctx.json({ message: 'No branch found.' }, 422);
 
   // Example products for this business type (domain/businessTypes.ts) — a
   // pharmacy gets medicines, a bottle store gets drinks, not a tuckshop's list.
-  const items = businessTypeFor(t.mode, branch.mode).starters;
-  const productType = branch.mode === 'restaurant' ? 'restaurant' : 'retail';
+  // With their example quantities, so the first sale can happen straight away.
+  const count = await addStarters(t, branch, missing.map((starter) => ({ starter })), { openingStock: true });
 
-  // Reserve a block of SKU numbers in one atomic increment (same SKU-000001
-  // scheme as POST /products).
-  const { nextSkuNumber } = await db.tenant.update({
-    where: { id: t.id },
-    data: { nextSkuNumber: { increment: items.length } },
-    select: { nextSkuNumber: true },
-  });
-  const firstSku = nextSkuNumber - items.length;
-  const now = new Date();
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (db.$transaction as any)(async (tx: typeof db) => {
-    const categoryIds = new Map<string, string>();
-    for (const name of new Set(items.map((i) => i.category))) {
-      const existing = await tx.category.findFirst({ where: { tenantId: t.id, name, deletedAt: null }, select: { id: true } });
-      categoryIds.set(name, existing?.id ?? (await tx.category.create({ data: { tenantId: t.id, name }, select: { id: true } })).id);
-    }
-
-    for (const [i, item] of items.entries()) {
-      const productId = crypto.randomUUID();
-      await tx.product.create({
-        data: {
-          id: productId,
-          tenantId: t.id,
-          categoryId: categoryIds.get(item.category) ?? null,
-          sku: `SKU-${String(firstSku + i).padStart(6, '0')}`,
-          name: item.name,
-          priceCents: item.priceCents,
-          currency: t.currency ?? 'USD',
-          type: productType,
-          trackStock: item.qty !== null,
-        },
-      });
-      if (item.qty !== null) {
-        // Through the ledger like any other opening stock (POST /products).
-        await tx.stockMovement.create({
-          data: {
-            id: crypto.randomUUID(), tenantId: t.id, branchId: branch.id, productId,
-            delta: item.qty, reason: 'initial', occurredAt: now, createdAt: now,
-          },
-        });
-        await tx.stockLevel.create({
-          data: { tenantId: t.id, branchId: branch.id, productId, quantity: item.qty, updatedAt: now },
-        });
-      }
-    }
-  }, { timeout: 30_000 });
-
-  return ctx.json({ message: `Added ${items.length} example products. Edit or delete them any time under Inventory.`, count: items.length }, 201);
+  return ctx.json({ message: `Added ${count} example ${type.label.toLowerCase()} products. Edit or delete them any time under Inventory.`, count }, 201);
 });
 
 // POST /onboarding/till — create a device for THIS browser and hand back its

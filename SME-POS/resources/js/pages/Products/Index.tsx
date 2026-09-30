@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import AppLayout from "../../Layouts/AppLayout.js";
 import { usePageTitle, useQuery, useMutation, useFlash } from "../../lib/hooks.js";
 import { api } from "../../lib/api.js";
+import { SuggestedProducts } from "./SuggestedProducts.js";
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -113,6 +114,12 @@ export default function ProductsIndex() {
           <Link to="/products/create" className="btn-primary text-sm">+ New Product</Link>
         </div>
       </div>
+
+      {/* Ready-made products for this kind of business that aren't added yet */}
+      <SuggestedProducts
+        productCount={q ? Number.MAX_SAFE_INTEGER : total}
+        onAdded={(message) => { showFlash(message); refetch(); }}
+      />
 
       {/* Search + branch filter */}
       <div className="mt-4 flex flex-wrap gap-2">

@@ -168,7 +168,7 @@ export function WorkshopTill({
             <header className="flex items-center justify-between px-4 py-3 border-b border-white/8 shrink-0">
                 <div className="flex items-center gap-3">
                     <SyncBadge />
-                    <ModePill mode={device.branch.mode} />
+                    <ModePill mode={device.branch.mode} kind={device.branch.kind} />
                 </div>
                 <span className="text-sm font-semibold text-slate-300">{device.branch.name}</span>
                 <div className="flex flex-wrap items-center gap-1.5">

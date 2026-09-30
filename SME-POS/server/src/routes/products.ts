@@ -4,6 +4,7 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db } from '../lib/db.js';
 import type { HonoVars } from '../lib/context.js';
+import { addStarters, missingStarters } from '../domain/catalogue.js';
 
 export const productRoutes = new Hono<{ Variables: HonoVars }>();
 
@@ -109,6 +110,54 @@ productRoutes.get('/form-data', async (ctx) => {
     select: { id: true, name: true },
   });
   return ctx.json({ categories });
+});
+
+// GET /products/suggestions — this business type's ready-made products the
+// business doesn't have yet (a butchery with only "Beef" is offered Chicken,
+// Pork, Goat, Boerewors…). Previously the ready-made set could only be loaded
+// into a completely EMPTY catalogue, so after the first product it vanished.
+productRoutes.get('/suggestions', async (ctx) => {
+  const { type, missing } = await missingStarters(ctx.get('tenant'));
+  return ctx.json({
+    businessType: type.label,
+    suggestions: missing.map((s) => ({ name: s.name, category: s.category, priceCents: s.priceCents, tracked: s.qty !== null })),
+  });
+});
+
+// POST /products/suggestions { items: [{ name, priceCents? }] } — add some (or
+// all) of them, optionally at the owner's own price. Only names from the
+// suggestion list are accepted — this isn't a bulk-create API. Added with NO
+// opening stock (see addStarters): receive the real quantity afterwards.
+productRoutes.post('/suggestions', async (ctx) => {
+  const user = ctx.get('user');
+  if (!isAdmin(user.role)) return ctx.json({ message: 'Forbidden.' }, 403);
+  const tenant = ctx.get('tenant');
+
+  const { items } = z
+    .object({
+      items: z.array(z.object({ name: z.string(), priceCents: z.number().int().min(0).max(100_000_000).optional() })).min(1).max(50),
+    })
+    .parse(await ctx.req.json());
+
+  const { missing, branch } = await missingStarters(tenant);
+  if (!branch) return ctx.json({ message: 'No branch found.' }, 422);
+
+  const byName = new Map(missing.map((s) => [s.name, s]));
+  const seen = new Set<string>();
+  const chosen: { starter: (typeof missing)[number]; priceCents?: number }[] = [];
+  for (const i of items) {
+    const starter = byName.get(i.name);
+    if (!starter || seen.has(i.name)) continue; // unknown, already added, or repeated in the request
+    seen.add(i.name);
+    chosen.push({ starter, priceCents: i.priceCents });
+  }
+  await addStarters(tenant, branch, chosen, { openingStock: false });
+
+  const n = chosen.length;
+  return ctx.json({
+    added: chosen.map((c) => c.starter.name),
+    message: n ? `Added ${n} product${n === 1 ? '' : 's'}. Use Restock (or Receive stock at the till) to set how many you have.` : 'Nothing to add.',
+  }, 201);
 });
 
 // POST /products

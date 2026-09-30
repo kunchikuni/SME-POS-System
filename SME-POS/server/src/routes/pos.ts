@@ -3,18 +3,47 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../lib/db.js';
 import type { HonoVars } from '../lib/context.js';
+import { branchKind } from '../domain/businessTypes.js';
 export const posRoutes = new Hono<{ Variables: HonoVars }>();
 
 // GET /pos/session — device session info for the till
 posRoutes.get('/session', async (ctx) => {
   const device = ctx.get('device');
   const tenant = ctx.get('tenant');
+
+  // Fetch fiscal device for this tenant (optional — not all tenants have one)
+  const fiscalDevice = await db.fiscalDevice.findUnique({
+    where: { tenantId: tenant.id },
+    select: { verifiedAt: true, taxpayerTin: true, vatNumber: true },
+  });
+
   return ctx.json({
-    device: { id: device.id, name: device.name, branchId: device.branchId },
-    tenant: { id: tenant.id, name: tenant.name, currency: tenant.currency, taxRateBps: tenant.taxRateBps },
-    branch: device.branch,
+    device: { id: device.id, name: device.name },
+    tenant: {
+      name: tenant.name,
+      currency: tenant.currency,
+      taxRateBps: tenant.taxRateBps,
+      // branding column stores theme overrides; default to empty object if unset
+      theme: (tenant.branding as Record<string, unknown>) ?? {},
+      fiscal: {
+        verified: fiscalDevice?.verifiedAt != null,
+        taxpayerTin: fiscalDevice?.taxpayerTin ?? null,
+        vatNumber: fiscalDevice?.vatNumber ?? null,
+      },
+    },
+    branch: {
+      id: device.branch.id,
+      name: device.branch.name,
+      mode: device.branch.mode,
+      // What this branch IS ("Butchery", "Pharmacy"…), for the till's header —
+      // `mode` only says which till layout to use, and is "retail" for many types.
+      kind: branchKind(tenant.mode, device.branch.mode),
+      address: device.branch.address ?? null,
+      phone: device.branch.phone ?? null,
+    },
   });
 });
+
 
 // GET /pos/tasks
 posRoutes.get('/tasks', async (ctx) => {

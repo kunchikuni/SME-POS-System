@@ -224,7 +224,16 @@ export interface SessionResponse {
      * till at THIS branch opens to. Two branches of the same tenant can be
      * genuinely different business types; see Branch::mode server-side.
      */
-    branch: { id: string; name: string; mode: TenantMode; address: string | null; phone: string | null };
+    branch: {
+        id: string;
+        name: string;
+        /** Which till layout to open (retail / restaurant / hardware / workshop). */
+        mode: TenantMode;
+        /** What the branch IS — "Butchery", "Pharmacy"… — for display. Absent on sessions stored before this existed. */
+        kind?: { label: string; icon: string };
+        address: string | null;
+        phone: string | null;
+    };
     tenant: {
         name: string;
         theme: TenantTheme;

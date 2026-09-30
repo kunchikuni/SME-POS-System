@@ -201,7 +201,7 @@ export function RestaurantTill({
                         <SyncBadge />
                         <ThemeToggle />
                         <InstallAppButton />
-                        <ModePill mode="restaurant" />
+                        <ModePill mode="restaurant" kind={device.branch.kind} />
                         {/* Managers usually start here, on the floor plan — so the
                             manager actions are on this header too, not only the menu's. */}
                         {isManager && <button onClick={() => setShowReceiveStock(true)}  className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Receive stock</button>}
@@ -392,7 +392,7 @@ export function RestaurantTill({
                             <SyncBadge />
                             <ThemeToggle />
                             <InstallAppButton />
-                            <ModePill mode="restaurant" />
+                            <ModePill mode="restaurant" kind={device.branch.kind} />
                             <button onClick={() => setShowTasks(true)}   className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Tasks</button>
                             {isManager && <button onClick={() => setShowReceiveStock(true)}  className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Receive stock</button>}
                             {isManager && <button onClick={() => setShowRecordPayment(true)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Record payment</button>}
