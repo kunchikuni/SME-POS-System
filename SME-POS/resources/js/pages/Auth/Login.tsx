@@ -47,6 +47,9 @@ export default function Login() {
         } else {
           setErrors({ general: body.message ?? "These credentials do not match our records." });
         }
+      } else if (err instanceof ApiError && err.status === 429) {
+        // Rate limited — the server's message says how long to wait.
+        setErrors({ general: err.message });
       } else if (err instanceof ApiError && err.status === 401) {
         setErrors({ general: "These credentials do not match our records." });
       } else {
