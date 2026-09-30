@@ -28,6 +28,7 @@ import { SyncBadge, SettingsChangedBanner, ModePill, ThemeToggle, OutboxStuckBan
 import { Receipt } from './Receipt';
 import { PrinterSettings } from './PrinterSettings';
 import { TasksPanel } from './TasksPanel';
+import { TasksButton } from './TasksButton';
 import { ReceiveStock } from './ReceiveStock';
 import { CreditCustomerFields, useCreditCustomer } from './CreditCustomer';
 import { RecordPayment } from './RecordPayment';
@@ -353,10 +354,7 @@ export function RetailTill({
                             <ThemeToggle />
                             <InstallAppButton />
                             <ModePill mode="retail" kind={device.branch.kind} />
-                            <button
-                                onClick={() => setShowTasks(true)}
-                                className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors"
-                            >Tasks</button>
+                            <TasksButton cashierId={shift.cashierId} onClick={() => setShowTasks(true)} />
                             {(shift.role === 'owner' || shift.role === 'manager') && (
                                 <button
                                     onClick={() => setShowReceiveStock(true)}

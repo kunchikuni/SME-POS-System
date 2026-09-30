@@ -51,25 +51,43 @@ posRoutes.get('/tasks', async (ctx) => {
   const device = ctx.get('device');
   const tasks = await db.task.findMany({
     where: { tenantId: tenant.id, status: 'open', deletedAt: null, OR: [{ branchId: device.branchId }, { branchId: null }] },
-    select: { id: true, title: true, notes: true, dueAt: true, assignedTo: true },
-    orderBy: { createdAt: 'asc' },
+    select: { id: true, title: true, notes: true, dueAt: true, assignedTo: true, assignee: { select: { name: true } } },
+    // Soonest due first; undated tasks last, oldest first.
+    orderBy: [{ dueAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
   });
-  return ctx.json({ tasks });
+  // The till's contract (types/contract.ts TillTask) is snake_case with the
+  // assignee's NAME — this used to send dueAt/assignedTo, so the till's Tasks
+  // panel never showed a due date or an assignee.
+  return ctx.json({
+    tasks: tasks.map((t: typeof tasks[number]) => ({
+      id: t.id,
+      title: t.title,
+      notes: t.notes,
+      due_at: t.dueAt ? t.dueAt.toISOString() : null,
+      assignee: t.assignee?.name ?? null,
+      assigned_to: t.assignedTo,
+    })),
+  });
 });
 
 // POST /pos/tasks/:id/complete
 posRoutes.post('/tasks/:id/complete', async (ctx) => {
   const tenant = ctx.get('tenant');
-  let cashierId: string | undefined;
+  let cashierId: string | null = null;
   try {
     const body = await ctx.req.json();
-    const parsed = z.object({ cashierId: z.string().uuid().optional() }).safeParse(body);
-    if (parsed.success) cashierId = parsed.data.cashierId;
+    // The till sends snake_case (`cashier_id`, see apiClient.completeTask). This
+    // used to read `cashierId`, which never matched — so nobody was ever
+    // recorded as having completed a task from the till.
+    const parsed = z.object({ cashier_id: z.string().uuid().nullable().optional(), cashierId: z.string().uuid().nullable().optional() }).safeParse(body);
+    if (parsed.success) cashierId = parsed.data.cashier_id ?? parsed.data.cashierId ?? null;
   } catch {
     // no body is fine
   }
+  // Only credit someone from THIS business (the foreign key alone would accept any user).
+  if (cashierId && !(await db.user.findFirst({ where: { id: cashierId, tenantId: tenant.id }, select: { id: true } }))) cashierId = null;
   const task = await db.task.findFirst({ where: { id: ctx.req.param('id'), tenantId: tenant.id, deletedAt: null } });
   if (!task) return ctx.json({ message: 'Not found.' }, 404);
-  const updated = await db.task.update({ where: { id: task.id }, data: { status: 'done', completedAt: new Date(), completedBy: cashierId ?? null } });
+  const updated = await db.task.update({ where: { id: task.id }, data: { status: 'done', completedAt: new Date(), completedBy: cashierId } });
   return ctx.json(updated);
 });

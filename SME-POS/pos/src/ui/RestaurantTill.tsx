@@ -31,6 +31,7 @@ import { RecordPayment } from './RecordPayment';
 import { Receipt } from './Receipt';
 import { PrinterSettings } from './PrinterSettings';
 import { TasksPanel } from './TasksPanel';
+import { TasksButton } from './TasksButton';
 import { ScannerModal } from './ScannerModal';
 import { isScanSupported } from '../hardware/barcodeScanner';
 
@@ -202,6 +203,8 @@ export function RestaurantTill({
                         <ThemeToggle />
                         <InstallAppButton />
                         <ModePill mode="restaurant" kind={device.branch.kind} />
+                        {/* Tasks live here too, so a new one reaches whoever is on the floor plan. */}
+                        <TasksButton cashierId={shift.cashierId} onClick={() => setShowTasks(true)} />
                         {/* Managers usually start here, on the floor plan — so the
                             manager actions are on this header too, not only the menu's. */}
                         {isManager && <button onClick={() => setShowReceiveStock(true)}  className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Receive stock</button>}
@@ -211,6 +214,7 @@ export function RestaurantTill({
                         </button>
                     </div>
                 </header>
+                {showTasks && <TasksPanel cashierId={shift.cashierId} onClose={() => setShowTasks(false)} />}
                 {managerPanels}
 
                 <div className="flex-1 overflow-y-auto px-5 py-6 dark-scroll">
@@ -393,7 +397,7 @@ export function RestaurantTill({
                             <ThemeToggle />
                             <InstallAppButton />
                             <ModePill mode="restaurant" kind={device.branch.kind} />
-                            <button onClick={() => setShowTasks(true)}   className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Tasks</button>
+                            <TasksButton cashierId={shift.cashierId} onClick={() => setShowTasks(true)} />
                             {isManager && <button onClick={() => setShowReceiveStock(true)}  className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Receive stock</button>}
                             {isManager && <button onClick={() => setShowRecordPayment(true)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Record payment</button>}
                             <button onClick={() => setShowPrinter(true)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Printer</button>

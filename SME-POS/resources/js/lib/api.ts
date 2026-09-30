@@ -196,10 +196,16 @@ export interface Task {
     title: string;
     notes: string | null;
     status: string;
+    /** A calendar day, stored at noon UTC — use dueDay() (lib/dates) to read it. */
     dueAt: string | null;
     assignedTo: string | null;
-    assignee?: { name: string } | null;
+    branchId?: string | null;
+    completedAt?: string | null;
+    createdAt?: string;
+    assignee?: { id: string; name: string } | null;
     creator?: { name: string } | null;
+    completer?: { name: string } | null;
+    branch?: { name: string } | null;
 }
 
 export interface KitchenOrder {
@@ -372,7 +378,8 @@ export const api = {
     },
 
     tasks: {
-        list: () => get<{ tasks: Task[] }>('/tasks'),
+        /** `today` is the business's today (server timezone rules), so "overdue" agrees everywhere. */
+        list: () => get<{ tasks: Task[]; today: string }>('/tasks'),
         create: (data: Record<string, unknown>) => post<Task>('/tasks', data),
         update: (id: string, data: Record<string, unknown>) => patch<Task>(`/tasks/${id}`, data),
         complete: (id: string) => post<Task>(`/tasks/${id}/complete`),

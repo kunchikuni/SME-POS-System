@@ -176,6 +176,7 @@ export function WorkshopTill({
                     <ThemeToggle />
                     <TillHeaderButtons
                         isManager={isManager}
+                        cashierId={shift.cashierId}
                         onTasks={() => setShowTasks(true)}
                         onReceiveStock={() => setShowReceiveStock(true)}
                         onRecordPayment={() => setShowRecordPayment(true)}
