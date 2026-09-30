@@ -13,6 +13,7 @@ import bcrypt from 'bcryptjs';
 import { db } from '../lib/db.js';
 import { runWithTenant, withoutTenantScope } from '../lib/tenantScope.js';
 import { issueHandoff, redeemHandoff } from '../lib/handoff.js';
+import { LOGIN_FAILURE_LIMIT, clientIp, loginFailures, rateLimitsDisabled, tooManyRequests } from '../lib/rateLimit.js';
 import { BUSINESS_TYPES, BUSINESS_TYPE_KEYS, businessTypeFor } from '../domain/businessTypes.js';
 import type { HonoVars } from '../lib/context.js';
 
@@ -33,6 +34,15 @@ authRoutes.post('/login', async (ctx) => {
 
     const tenant = ctx.get('tenant');
 
+    // Too many wrong passwords for this email from this address → stop before
+    // doing any work. Keyed on what was SUBMITTED, not on whether the account
+    // exists, so it reveals nothing about which emails have accounts.
+    const failKey = `${tenant.id}:${email.toLowerCase()}:${clientIp(ctx)}`;
+    if (!rateLimitsDisabled()) {
+        const { count, retryAfterSec } = loginFailures.peek(failKey);
+        if (count >= LOGIN_FAILURE_LIMIT) return tooManyRequests(ctx, retryAfterSec, 'failed sign-in attempts');
+    }
+
     const user = await db.user.findFirst({
         where: { tenantId: tenant.id, email, deletedAt: null },
     });
@@ -40,9 +50,11 @@ authRoutes.post('/login', async (ctx) => {
     const passwordOk = await bcrypt.compare(password, user?.password ?? DUMMY_HASH);
 
     if (!user || !user.password || !passwordOk) {
+        loginFailures.hit(failKey);
         return ctx.json({ message: 'These credentials do not match our records.' }, 422);
     }
 
+    loginFailures.reset(failKey);
     ctx.get('session').set('userId', user.id);
 
     return ctx.json({ user: { id: user.id, name: user.name, role: user.role } });

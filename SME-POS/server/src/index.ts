@@ -34,6 +34,8 @@
  * this is an external dashboard setting, not something in this repo.
  */
 import 'dotenv/config';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -44,6 +46,7 @@ import { sessionMiddleware, CookieStore } from 'hono-sessions';
 import { ZodError } from 'zod';
 
 import type { HonoVars } from './lib/context.js';
+import { rateLimit } from './lib/rateLimit.js';
 import { resolveTenant } from './middleware/resolveTenant.js';
 import { requireAuth, requireGuest } from './middleware/auth.js';
 import { resolveDevice } from './middleware/resolveDevice.js';
@@ -82,6 +85,18 @@ import { barcodeRoutes } from './routes/barcodes.js';
 import { syncRoutes } from './routes/sync.js';
 import { posRoutes } from './routes/pos.js';
 
+// ── Where the built dashboard and till live ──────────────────────────────────
+// Found from THIS FILE's location, not the working directory. serveStatic
+// resolves paths against process.cwd(), and the old hard-coded '../public'
+// only worked when started from server/ (npm run dev). In the Docker image the
+// process starts in /app, '../public' meant /public, and every page, asset and
+// manifest returned 404. server/src/index.ts (dev) and server/dist/index.js
+// (production) are both two folders below the project root, so '../../public'
+// is right for both. PUBLIC_DIR overrides it for unusual layouts.
+const PUBLIC_DIR = process.env.PUBLIC_DIR ?? fileURLToPath(new URL('../../public', import.meta.url));
+// serveStatic wants a path relative to the working directory.
+const PUBLIC_REL = path.relative(process.cwd(), PUBLIC_DIR).split(path.sep).join('/') || '.';
+
 // ── App setup ─────────────────────────────────────────────────────────────────
 const app = new Hono<{ Variables: HonoVars }>();
 
@@ -97,6 +112,18 @@ if (process.env.NODE_ENV === 'production') {
     }
     if (!APP_KEY || APP_KEY.length < 32) {
         throw new Error('APP_KEY must be set (≥32 chars) in production — refusing to start.');
+    }
+    // APP_KEY encrypts every session cookie AND signs the sign-up hand-off
+    // links, so anyone who knows it can forge a login as any user. The example
+    // value shipped in .env.example ("change-me-to-a-32-character-random-
+    // string!!") is 43 characters — it sailed through the length check above —
+    // so also refuse placeholders and keys that are obviously not random.
+    const placeholder = /change[-_ ]?me|dev-only|example|placeholder|your[-_ ]?(key|secret)|secret|password|123456|qwerty/i;
+    if (placeholder.test(APP_KEY) || new Set(APP_KEY).size < 12) {
+        throw new Error(
+            'APP_KEY looks like a placeholder, not a random key — refusing to start. ' +
+            "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"",
+        );
     }
 }
 
@@ -151,6 +178,19 @@ app.use(
         },
     }),
 );
+
+// ── Attempt limits on the public endpoints ───────────────────────────────────
+// Per client IP (lib/rateLimit.ts — including how the IP is read behind a
+// proxy). Registered here, before any route, so they run first. Failed
+// sign-ins are additionally counted per email inside the login handler.
+// Generous enough that a real person, or a busy shop behind one shared IP,
+// never notices; tight enough to make guessing and scripted sign-ups useless.
+app.use('/api/login', rateLimit({ name: 'login', windowMs: 15 * 60_000, max: 40, what: 'sign-in attempts', methods: ['POST'] }));
+app.use('/api/register', rateLimit({ name: 'register', windowMs: 60 * 60_000, max: 8, what: 'sign-up attempts', methods: ['POST'] }));
+app.use('/api/welcome', rateLimit({ name: 'welcome', windowMs: 10 * 60_000, max: 30, what: 'attempts', methods: ['POST'] }));
+app.use('/api/enquire', rateLimit({ name: 'enquire', windowMs: 60 * 60_000, max: 6, what: 'enquiries', methods: ['POST'] }));
+// Sign-up checks availability as you type (debounced) — allow plenty, but not enumeration at scale.
+app.use('/api/tenant-lookup', rateLimit({ name: 'lookup', windowMs: 60_000, max: 60, what: 'lookups', methods: ['GET'] }));
 
 // ── Global error handler ──────────────────────────────────────────────────────
 // Previously absent: a Zod .parse() throw or any DB error fell through to
@@ -217,8 +257,8 @@ app.use('/pos/*', async (ctx, next) => {
 });
 
 // ── Static assets (Vite build output) ─────────────────────────────────────────
-app.use('/assets/*', serveStatic({ root: '../public' }));
-app.use('/pos/assets/*', serveStatic({ root: '../public' }));
+app.use('/assets/*', serveStatic({ root: PUBLIC_REL }));
+app.use('/pos/assets/*', serveStatic({ root: PUBLIC_REL }));
 
 // ── POS API routes (device bearer-token auth — stateless) ─────────────────────
 // Unprefixed by design (see file docblock) — does not collide with the
@@ -348,25 +388,25 @@ app.route('/api', api);
 // in production the till was never installable (the browser got HTML for
 // its manifest) and its offline service worker never registered. These are
 // served as the real files, from an explicit list rather than all of
-// ../public, so nothing else that lands in the build folder is exposed.
-for (const path of [
+// the whole public folder, so nothing else that lands in the build folder is exposed.
+for (const filePath of [
   '/manifest.webmanifest', '/icons/*', '/favicon.svg', '/favicon.ico', '/apple-touch-icon.png', '/robots.txt',
   '/pos/manifest.webmanifest', '/pos/sw.js', '/pos/workbox-*', '/pos/registerSW.js', '/pos/icons/*',
   '/pos/screenshots/*', '/pos/offline.html', '/pos/favicon.svg', '/pos/favicon.ico',
 ]) {
-  app.get(path, serveStatic({ root: '../public' }));
+  app.get(filePath, serveStatic({ root: PUBLIC_REL }));
 }
 
 // ── POS PWA shell catch-all ───────────────────────────────────────────────────
 // Serves pos/index.html for all /pos/* navigation requests.
 // Registered LAST so static asset routes take priority.
-app.get('/pos/*', serveStatic({ path: '../public/pos/index.html' }));
+app.get('/pos/*', serveStatic({ path: `${PUBLIC_REL}/pos/index.html` }));
 
 // ── Dashboard SPA catch-all ───────────────────────────────────────────────────
 // Serves the main Vite SPA for all non-API routes. Because every JSON route
 // now lives under /api (or /sync, /pos for the till), this is a genuine
 // catch-all: no page path can ever collide with a data endpoint again.
-app.get('*', serveStatic({ path: '../public/index.html' }));
+app.get('*', serveStatic({ path: `${PUBLIC_REL}/index.html` }));
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
