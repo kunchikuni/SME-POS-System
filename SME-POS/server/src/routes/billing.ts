@@ -9,7 +9,8 @@
  * domain/billing/maintenance.ts):
  *   - BYOD            $19.99 for each month, paid by hand each month.
  *   - Standard/Premium bought once -- hardware and the FIRST month included --
- *                     then a $5 maintenance fee for every month after that.
+ *                     then a monthly maintenance fee (Standard and Premium
+ *                     differ -- maintenance.ts) for every month after that.
  * Every payment buys 30-day periods (currentPeriodEnd) -- one, or up to a year
  * ahead for BYOD and maintenance. When they run out the dashboard locks and,
  * after a short grace, the tills pause (see ensureSubscribed /
@@ -40,7 +41,7 @@ import { db } from '../lib/db.js';
 import { initiateTransaction, verifyHash, isPaidStatus, PaynowNotConfiguredError } from '../lib/paynow.js';
 import { accessSummary } from '../domain/billing/entitlementService.js';
 import {
-  MAINTENANCE_FEE_CENTS, PREPAY_OPTIONS, billedMonths, freeMonths, monthsFromReference, nextPeriodEnd, paysMaintenance,
+  PREPAY_OPTIONS, billedMonths, freeMonths, maintenanceFeeCents, monthsFromReference, nextPeriodEnd, paysMaintenance,
 } from '../domain/billing/maintenance.js';
 import { PLAN_PRICES, usd } from '../domain/billing/pricing.js';
 import type { HonoVars } from '../lib/context.js';
@@ -96,7 +97,7 @@ billingRoutes.get('/payments', async (ctx) => {
     label: PLAN_DISPLAY[key]?.label ?? p.label,
     amountCents: p.amountCents,
     recurring: p.recurring,
-    maintenanceCents: paysMaintenance(key) ? MAINTENANCE_FEE_CENTS : null,
+    maintenanceCents: maintenanceFeeCents(key),
     branches: PLAN_DISPLAY[key]?.branches ?? null,
     features: PLAN_DISPLAY[key]?.features ?? [],
   }));
@@ -106,7 +107,7 @@ billingRoutes.get('/payments', async (ctx) => {
   // grandfathered -- nothing is owed on it.
   const maintenance =
     paysMaintenance(t.plan) && subscription?.plan === t.plan && subscription.currentPeriodEnd
-      ? { amountCents: MAINTENANCE_FEE_CENTS, plan: t.plan, paidThrough: subscription.currentPeriodEnd }
+      ? { amountCents: maintenanceFeeCents(t.plan)!, plan: t.plan, paidThrough: subscription.currentPeriodEnd }
       : null;
 
   return ctx.json({
@@ -198,11 +199,11 @@ billingRoutes.post('/payments/subscribe', async (ctx) => {
 
   // Standard and Premium are bought once. A business that already has the plan
   // -- including one whose month has run out -- must not pay the full price a
-  // second time; the $5 maintenance is what brings it back.
+  // second time; the monthly maintenance is what brings it back.
   if (paysMaintenance(plan) && (await paidSubscription(plan))) {
     return ctx.json(
       {
-        message: `${PLAN_DISPLAY[plan].label} is already paid for. Pay the ${usd(MAINTENANCE_FEE_CENTS)} monthly maintenance to keep it running.`,
+        message: `${PLAN_DISPLAY[plan].label} is already paid for. Pay the ${usd(maintenanceFeeCents(plan)!)} monthly maintenance to keep it running.`,
         code: 'already_purchased',
       },
       409,
@@ -244,7 +245,7 @@ billingRoutes.post('/payments/maintenance', async (ctx) => {
 
   return startPayment(ctx, {
     plan: tenant.plan,
-    amountCents: MAINTENANCE_FEE_CENTS,
+    amountCents: maintenanceFeeCents(tenant.plan)!,
     label: `${PLAN_DISPLAY[tenant.plan]?.label ?? tenant.plan} maintenance`,
     prefix: 'maint',
     months,
@@ -290,7 +291,7 @@ billingWebhookRoutes.post('/webhook', async (ctx) => {
 
   // Paynow sends more than one "paid" message for a payment (Paid, then
   // Awaiting Delivery / Delivered) and retries. Each payment may extend the
-  // period only ONCE, or a single $5 would buy several months.
+  // period only ONCE, or a single payment would buy several months.
   if (subscription.status === 'active') {
     return ctx.json({ message: 'Acknowledged.' }, 200);
   }

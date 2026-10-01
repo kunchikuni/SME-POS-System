@@ -275,7 +275,8 @@ export default function PaymentsSettings() {
           <h2 className="font-semibold text-ink">{subscription ? "Plans" : "Choose a plan"}</h2>
           <p className="mt-1 text-xs text-muted">
             BYOD is billed monthly. Standard and Premium are bought once — hardware and your first month
-            included — then {money(plans.find((p) => p.maintenanceCents)?.maintenanceCents ?? 500)} a month maintenance from the second month.
+            included — then a monthly maintenance fee from the second month (
+            {plans.filter((p) => p.maintenanceCents !== null).map((p) => `${p.label} ${money(p.maintenanceCents!)}`).join(", ")}).
           </p>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
             {plans.map((p) => (
@@ -291,7 +292,7 @@ export default function PaymentsSettings() {
                   {money(p.amountCents)}{p.recurring ? "/mo" : " one-time"}
                 </div>
                 {p.maintenanceCents !== null && (
-                  <div className="text-xs text-muted">then {money(p.maintenanceCents)}/mo from month 2</div>
+                  <div className="text-xs text-muted">then {money(p.maintenanceCents)}/mo maintenance from month 2</div>
                 )}
                 <div className="mt-1 text-xs text-muted">
                   {p.branches === null ? "Unlimited branches" : `Up to ${p.branches} branch${p.branches === 1 ? "" : "es"}`}

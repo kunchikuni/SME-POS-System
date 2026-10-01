@@ -173,7 +173,7 @@ export async function runBillingReminders(deps: ReminderDeps = {}): Promise<Remi
         const payUrl = paymentsUrl(tenant.subdomain);
         const content = (o: Owner) => ({
           stage, kind: summary.kind, businessName: tenant.name, ownerName: o.name,
-          endsAt, graceEndsAt: summary.graceEndsAt, payUrl,
+          endsAt, graceEndsAt: summary.graceEndsAt, feeCents: summary.maintenanceFeeCents, payUrl,
         });
 
         /** Claim it, send it to each recipient, release the claim if that fails. True if it went out. */

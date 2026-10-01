@@ -9,7 +9,8 @@
  *   - 'fiscalisation' is a special case: Premium OR zimra_addon
  */
 
-import { MAINTENANCE_FEE_CENTS, paysMaintenance } from './maintenance.js';
+import { maintenanceFeeCents, paysMaintenance } from './maintenance.js';
+import { usd } from './pricing.js';
 
 export type TenantForEntitlement = {
   plan: string;
@@ -88,7 +89,7 @@ export const DEVICE_GRACE_DAYS = 3;
 
 /**
  * Standard and Premium get far longer. They paid $200+ up front for hardware
- * they are using, and what they are late with is a $5 fee: cutting their sync
+ * they are using, and what they are late with is a small monthly maintenance fee: cutting their sync
  * after three days over that would be out of all proportion. Two weeks is time
  * to notice a missed email or text, be away, or wait for a payday.
  */
@@ -153,7 +154,7 @@ export function accessSummary(tenant: TenantForEntitlement, now: Date = new Date
     kind,
     endsAt,
     daysLeft: !blocked && endsAt ? Math.max(0, Math.ceil((endsAt.getTime() - now.getTime()) / 86_400_000)) : null,
-    maintenanceFeeCents: kind === 'maintenance' ? MAINTENANCE_FEE_CENTS : null,
+    maintenanceFeeCents: kind === 'maintenance' ? maintenanceFeeCents(tenant.plan) : null,
     features: {
       aiInsights: hasFeature(tenant, 'ai insights', now),
       payroll: hasFeature(tenant, 'payroll', now),
@@ -167,14 +168,14 @@ export function blockedNotice(tenant: TenantForEntitlement): {
   message: string;
   reason: 'trial_ended' | 'maintenance_due' | 'subscription_ended';
 } {
-  const { kind, endsAt } = accessSummary(tenant);
+  const { kind, endsAt, maintenanceFeeCents: fee } = accessSummary(tenant);
   if (kind === 'trial') {
     return { reason: 'trial_ended', message: 'Your trial has ended. Choose a plan to keep using Wivae.' };
   }
   if (kind === 'maintenance' && endsAt) {
     return {
       reason: 'maintenance_due',
-      message: `Your monthly maintenance ($${MAINTENANCE_FEE_CENTS / 100}) is overdue. Pay it to keep using Wivae.`,
+      message: `Your monthly maintenance${fee ? ` (${usd(fee)})` : ''} is overdue. Pay it to keep using Wivae.`,
     };
   }
   return { reason: 'subscription_ended', message: 'Your subscription has ended. Renew to keep using Wivae.' };

@@ -6,7 +6,9 @@ import { REGISTER_URL } from "../config";
  * Self-serve pricing. Figures: BYOD $19.99/mo, Standard $199.99 once off,
  * Premium $249 once off — once off because the tablet is included outright
  * (see the pricing-restore commit) — each with the first month included, then
- * $5/mo maintenance from the second month (server: domain/billing/maintenance.ts).
+ * a monthly maintenance fee from the second month. The amount is deliberately
+ * NOT shown here (only "plus a monthly maintenance fee"); owners see theirs in the
+ * dashboard (server: domain/billing/maintenance.ts).
  *
  * Fully static (zero client JS) — deliberately, so a search engine or a
  * slow connection sees the actual prices in the initial HTML. The
@@ -32,16 +34,13 @@ export default function Pricing({
     );
   }
 
-  // One figure for the intro line; the cards show each plan's own.
-  const standardMaintenance = Object.values(plans).find((p) => p.maintenance)?.maintenance ?? 5;
-
   return (
     <section id="pricing" className="px-6 py-24 transition-colors">
       <div className="mx-auto max-w-6xl">
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Pricing</p>
           <h2 className="mt-3 font-display text-3xl font-extrabold tracking-tight text-balance sm:text-5xl">Simple, honest investment</h2>
-          <p className="mt-4 text-base leading-relaxed text-muted">Standard and Premium include their tablet in a single once-off payment, with your first month included — then just ${standardMaintenance}/month to keep everything running.</p>
+          <p className="mt-4 text-base leading-relaxed text-muted">Standard and Premium include their tablet in a single once-off payment, with your first month included — then a monthly maintenance fee to keep everything running.</p>
         </div>
 
         <div className="mx-auto mt-8 max-w-2xl rounded-2xl border border-hairline bg-surface px-5 py-4 text-center text-sm text-muted transition-colors">
@@ -67,9 +66,9 @@ export default function Pricing({
                     <span className="font-display text-5xl font-extrabold tracking-tight tabular-nums">${p.price}</span>
                     <span className="text-sm text-muted">{p.recurring ? "/mo" : "once off payment"}</span>
                   </div>
-                  {p.maintenance !== undefined && (
+                  {p.maintenance && (
                     <p className="mt-1.5 text-xs font-medium text-ink">
-                      First month included, then ${p.maintenance}/month
+                      First month included, then a monthly maintenance fee
                     </p>
                   )}
                   <p className="mt-1.5 text-xs text-muted">
@@ -104,8 +103,8 @@ export default function Pricing({
 
         <p className="mx-auto mt-8 max-w-2xl text-center text-xs leading-relaxed text-muted">
           BYOD is billed monthly with no minimum term — cancel anytime. Standard and Premium are a once-off
-          payment that includes your tablet and printer outright and your first month; after that there is a flat
-          ${standardMaintenance} maintenance payment each month to keep your dashboard and tills running. Nothing is ever
+          payment that includes your tablet and printer outright and your first month; after that there is a monthly
+          maintenance fee to keep your dashboard and tills running. Nothing is ever
           charged automatically: we remind you by email and text before it is due, and paying ahead earns free months —
           6 months for the price of 5, 12 months for the price of 10. If a payment is missed, your tills keep selling for
           two weeks before sync pauses.

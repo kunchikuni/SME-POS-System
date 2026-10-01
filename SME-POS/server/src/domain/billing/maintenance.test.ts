@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BILLING_PERIOD_DAYS, MAINTENANCE_FEE_CENTS, PREPAY_OPTIONS, billedMonths, freeMonths, monthsFromReference, nextPeriodEnd, paysMaintenance,
+  BILLING_PERIOD_DAYS, PREPAY_OPTIONS, billedMonths, freeMonths, maintenanceFeeCents, monthsFromReference, nextPeriodEnd, paysMaintenance,
 } from './maintenance.js';
 
 const DAY = 86_400_000;
@@ -8,8 +8,17 @@ const now = new Date('2026-10-01T12:00:00.000Z');
 const days = (n: number) => new Date(now.getTime() + n * DAY);
 
 describe('maintenance fee', () => {
-  it('is $5', () => {
-    expect(MAINTENANCE_FEE_CENTS).toBe(500);
+  it('is $7 a month on Standard and $12 on Premium — Premium carries more upkeep', () => {
+    expect(maintenanceFeeCents('standard')).toBe(700);
+    expect(maintenanceFeeCents('premium')).toBe(1200);
+    expect(maintenanceFeeCents('pro')).toBe(1200); // the old name for Premium
+  });
+
+  it('is nothing on BYOD, a trial, or a plan nobody has heard of', () => {
+    for (const plan of ['byod', 'trial', 'enterprise', '', 'constructor', 'toString', '__proto__']) {
+      expect(maintenanceFeeCents(plan), plan).toBeNull();
+      expect(paysMaintenance(plan), plan).toBe(false);
+    }
   });
 
   it('applies to Standard and Premium, not BYOD or a trial', () => {
@@ -66,9 +75,11 @@ describe('free months for paying ahead', () => {
     ]);
   });
 
-  it('prices a $5 fee at $25 for six months and $50 for twelve', () => {
-    expect(MAINTENANCE_FEE_CENTS * billedMonths(6)).toBe(2500);
-    expect(MAINTENANCE_FEE_CENTS * billedMonths(12)).toBe(5000);
+  it('prices Standard at $35 for six months and $70 for twelve, and Premium at $60 and $120', () => {
+    expect(maintenanceFeeCents('standard')! * billedMonths(6)).toBe(3500);
+    expect(maintenanceFeeCents('standard')! * billedMonths(12)).toBe(7000);
+    expect(maintenanceFeeCents('premium')! * billedMonths(6)).toBe(6000);
+    expect(maintenanceFeeCents('premium')! * billedMonths(12)).toBe(12000);
   });
 
   it('gives no free month on a number of months it does not offer', () => {

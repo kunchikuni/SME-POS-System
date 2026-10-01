@@ -57,7 +57,7 @@ function blockedNotice(a: AccessInfo): PaymentNotice {
     title = "Your free trial has ended";
     action = "Choose a plan to keep using Wivae. Your data is safe.";
   } else if (a.kind === "maintenance" && a.endsAt) {
-    const fee = a.maintenanceFeeCents ? money(a.maintenanceFeeCents) : "the monthly fee";
+    const fee = a.maintenanceFeeCents ? money(a.maintenanceFeeCents) : "the monthly maintenance fee";
     title = "Monthly maintenance is overdue";
     action = `Pay ${fee} to reopen your dashboard. Your data is safe.`;
   } else {
@@ -96,7 +96,7 @@ export function paymentNotice(access: AccessInfo | null | undefined): PaymentNot
     };
   }
   if (access.kind === "maintenance" && left <= RENEWAL_NOTICE_DAYS) {
-    const fee = access.maintenanceFeeCents ? money(access.maintenanceFeeCents) : "the monthly fee";
+    const fee = access.maintenanceFeeCents ? money(access.maintenanceFeeCents) : "the monthly maintenance fee";
     return {
       tone: "warn",
       title: `Monthly maintenance is due in ${plural(left, "day")}`,

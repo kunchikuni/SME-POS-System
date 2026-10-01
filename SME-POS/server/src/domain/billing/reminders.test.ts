@@ -137,14 +137,20 @@ describe('reminderStage — which reminder a business is due', () => {
 });
 
 describe('reminderEmail — the words', () => {
-  const base = { businessName: 'Acme Hardware', ownerName: 'Tendai Moyo', endsAt: at(4), graceEndsAt: at(18), payUrl: 'https://acme.wivae.test/settings/payments' };
+  const base = { businessName: 'Acme Hardware', ownerName: 'Tendai Moyo', endsAt: at(4), graceEndsAt: at(18), feeCents: 700, payUrl: 'https://acme.wivae.test/settings/payments' };
 
-  it('names the $5 and links to Payments for a Standard/Premium business', () => {
+  it("names the plan's own fee and links to Payments for a Standard business", () => {
     const { subject, html } = reminderEmail({ ...base, stage: 'soon', kind: 'maintenance' });
     expect(subject).toContain('maintenance');
-    expect(subject).toContain('$5');
+    expect(subject).toContain('$7');
     expect(html).toContain('href="https://acme.wivae.test/settings/payments"');
-    expect(html).toContain('Pay $5');
+    expect(html).toContain('Pay $7');
+  });
+
+  it('quotes Premium its own, higher, fee', () => {
+    const { subject, html } = reminderEmail({ ...base, feeCents: 1200, stage: 'tomorrow', kind: 'maintenance' });
+    expect(`${subject} ${html}`).toContain('$12');
+    expect(`${subject} ${html}`).not.toContain('$7');
   });
 
   it('mentions the free months for paying ahead', () => {
@@ -201,7 +207,7 @@ describe('reminderEmail — the words', () => {
 });
 
 describe('reminderSms — the text', () => {
-  const base = { businessName: 'Acme Hardware', ownerName: 'Tendai Moyo', endsAt: at(4), graceEndsAt: at(18), payUrl: 'https://acme.wivae.co.zw/settings/payments' };
+  const base = { businessName: 'Acme Hardware', ownerName: 'Tendai Moyo', endsAt: at(4), graceEndsAt: at(18), feeCents: 700, payUrl: 'https://acme.wivae.co.zw/settings/payments' };
   const stages = ['soon', 'tomorrow', 'ended', 'pausing', 'paused'] as const;
   const kinds = ['trial', 'maintenance', 'monthly'] as const;
 
@@ -225,7 +231,8 @@ describe('reminderSms — the text', () => {
   });
 
   it('says the amount, and when', () => {
-    expect(reminderSms({ ...base, stage: 'tomorrow', kind: 'maintenance' })).toMatch(/\$5 maintenance is due tomorrow \(5 Oct\)/);
+    expect(reminderSms({ ...base, stage: 'tomorrow', kind: 'maintenance' })).toMatch(/\$7 maintenance is due tomorrow \(5 Oct\)/);
+    expect(reminderSms({ ...base, feeCents: 1200, stage: 'tomorrow', kind: 'maintenance' })).toContain('$12 maintenance');
     expect(reminderSms({ ...base, stage: 'tomorrow', kind: 'monthly' })).toContain('$19.99');
     expect(reminderSms({ ...base, stage: 'ended', kind: 'maintenance' })).toContain('keep selling until 19 Oct');
     expect(reminderSms({ ...base, stage: 'pausing', kind: 'maintenance' })).toContain('pause on 19 Oct');
@@ -281,6 +288,14 @@ describe('runBillingReminders', () => {
       expect(mails).toHaveLength(1);
       expect(mails[0].to).toBe('owner@t1.test');
       expect(mails[0].subject).toContain('maintenance');
+    });
+
+    it("quotes each business its own plan's fee — Standard $7, Premium $12", async () => {
+      addTenant('std', { plan: 'standard' }); addSub('std', 'standard', 4); addOwner('std');
+      addTenant('prem', { plan: 'premium' }); addSub('prem', 'premium', 4); addOwner('prem');
+      await runBillingReminders(deps());
+      expect(mails.find((m) => m.to === 'owner@std.test')!.subject).toContain('$7');
+      expect(mails.find((m) => m.to === 'owner@prem.test')!.subject).toContain('$12');
     });
 
     it('sends each reminder once, however often it runs', async () => {

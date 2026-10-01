@@ -167,7 +167,7 @@ make a real small test payment and confirm the plan activates.
 
 Paynow's core API is a single-payment flow, not native recurring billing.
 Standard/Premium are bought once (hardware and the first month included), then
-the owner pays a $5 maintenance fee each month. BYOD is priced monthly. Either
+the owner pays a monthly maintenance fee ($7 on Standard, $12 on Premium). BYOD is priced monthly. Either
 way each payment buys 30-day periods (one, or up to twelve paid ahead) and
 **nothing is charged automatically**. What keeps owners from forgetting is the
 reminder job (`server/src/domain/billing/reminders.ts`): it runs hourly inside

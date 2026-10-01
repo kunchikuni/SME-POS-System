@@ -122,8 +122,8 @@ describe('accessSummary — what the dashboard is told', () => {
   });
 
   it('counts down Standard/Premium to their next maintenance payment', () => {
-    expect(accessSummary(paid('standard', 4))).toMatchObject({ blocked: false, kind: 'maintenance', daysLeft: 4, maintenanceFeeCents: 500 });
-    expect(accessSummary(paid('premium', 25))).toMatchObject({ kind: 'maintenance', daysLeft: 25 });
+    expect(accessSummary(paid('standard', 4))).toMatchObject({ blocked: false, kind: 'maintenance', daysLeft: 4, maintenanceFeeCents: 700 });
+    expect(accessSummary(paid('premium', 25))).toMatchObject({ kind: 'maintenance', daysLeft: 25, maintenanceFeeCents: 1200 });
   });
 
   it('treats BYOD as a monthly plan with no maintenance fee', () => {
@@ -176,10 +176,13 @@ describe('ensureSubscribed — the dashboard routes', () => {
     expect(await res.json()).toMatchObject({ code: 'subscription_required', reason: 'trial_ended', message: expect.stringContaining('trial has ended') });
   });
 
-  it('blocks an unpaid maintenance month, and names the $5', async () => {
-    const res = await appFor(paid('standard', -2)).request('/api/products');
-    expect(res.status).toBe(402);
-    expect(await res.json()).toMatchObject({ code: 'subscription_required', reason: 'maintenance_due', message: expect.stringContaining('$5') });
+  it("blocks an unpaid maintenance month, and names the plan's own fee", async () => {
+    const standard = await appFor(paid('standard', -2)).request('/api/products');
+    expect(standard.status).toBe(402);
+    expect(await standard.json()).toMatchObject({ code: 'subscription_required', reason: 'maintenance_due', message: expect.stringContaining('$7') });
+
+    const premium = await appFor(paid('premium', -2)).request('/api/products');
+    expect(await premium.json()).toMatchObject({ reason: 'maintenance_due', message: expect.stringContaining('$12') });
   });
 
   it('blocks an ended BYOD month without talking about a trial or maintenance', async () => {
