@@ -40,7 +40,7 @@ export default function Register() {
 
     const [form, setForm] = useState({
         businessName: "", ownerName: "", subdomain: "", businessType: "retail",
-        email: "", password: "", password_confirmation: "", pin: "",
+        email: "", phone: "", password: "", password_confirmation: "", pin: "",
     });
     // Suggest the workspace from the business name until the owner edits it themselves.
     const [subdomainEdited, setSubdomainEdited] = useState(false);
@@ -105,7 +105,8 @@ export default function Register() {
                 headers: { "Content-Type": "application/json", Accept: "application/json" },
                 body: JSON.stringify({
                     businessName: form.businessName, ownerName: form.ownerName, subdomain: form.subdomain,
-                    businessType: form.businessType, email: form.email, password: form.password, pin: form.pin,
+                    businessType: form.businessType, email: form.email, phone: form.phone.trim() || undefined,
+                    password: form.password, pin: form.pin,
                 }),
             }).then(async (r) => {
                 const json = await r.json();
@@ -196,6 +197,18 @@ export default function Register() {
 
                         <Field label="Your name" value={form.ownerName} onChange={set("ownerName")} error={errors.ownerName} placeholder="Tariro Moyo" />
                         <Field label="Email" type="email" value={form.email} onChange={set("email")} error={errors.email} placeholder="tariro@example.com" />
+                        <div>
+                            <Field
+                                label="Mobile number (optional)"
+                                type="tel"
+                                inputMode="numeric"
+                                value={form.phone}
+                                onChange={set("phone")}
+                                error={errors.phone}
+                                placeholder="0771234567"
+                            />
+                            {!errors.phone && <p className="mt-1 text-xs text-muted">We'll text you before a payment is due. You can change or remove it later.</p>}
+                        </div>
                         <Field label="Password" type="password" value={form.password} onChange={set("password")} error={errors.password} placeholder="At least 8 characters" />
                         <Field label="Confirm password" type="password" value={form.password_confirmation} onChange={set("password_confirmation")} error={errors.password_confirmation} placeholder="••••••••" />
 

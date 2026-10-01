@@ -9,6 +9,8 @@
  *   const products = await api.products.list({ q: 'coffee' });
  */
 
+import type { AccessInfo } from './billing.js';
+
 // ── Base ────────────────────────────────────────────────────────────────────
 
 // Every JSON route on the server lives under /api (see server/src/index.ts's
@@ -33,6 +35,20 @@ class ApiError extends Error {
     }
 }
 
+/**
+ * Raised on `window` whenever the server answers 402 `subscription_required` —
+ * the business's trial or paid month has ended and the dashboard is shut. The
+ * app's PaymentGate (app.tsx) listens and takes the owner to Payments, so no
+ * page needs to handle this itself or shows a bare "Something went wrong".
+ */
+export const PAYMENT_REQUIRED_EVENT = 'wivae:payment-required';
+
+function signalIfPaymentRequired(status: number, body: unknown) {
+    if (status !== 402 || (body as any)?.code !== 'subscription_required') return;
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent(PAYMENT_REQUIRED_EVENT, { detail: { message: (body as any)?.message } }));
+}
+
 async function request<T>(
     method: string,
     path: string,
@@ -54,6 +70,7 @@ async function request<T>(
     if (!res.ok) {
         let errorBody: unknown;
         try { errorBody = await res.json(); } catch {}
+        signalIfPaymentRequired(res.status, errorBody);
         throw new ApiError(res.status, (errorBody as any)?.message ?? res.statusText, errorBody);
     }
 
@@ -79,6 +96,7 @@ async function uploadFile<T>(path: string, formData: FormData): Promise<T> {
     if (!res.ok) {
         let errorBody: unknown;
         try { errorBody = await res.json(); } catch {}
+        signalIfPaymentRequired(res.status, errorBody);
         throw new ApiError(res.status, (errorBody as any)?.message ?? res.statusText, errorBody);
     }
 
@@ -449,7 +467,10 @@ export const api = {
     settings: {
         getGeneral: () => get<{ currency: string; taxRateBps: number }>('/settings/general'),
         saveGeneral: (data: Record<string, unknown>) => patch<{ message: string }>('/settings/general', data),
-        getAccount: () => get<{ name: string; email: string }>('/settings/account'),
+        getAccount: () => get<{ name: string; email: string; phone: string | null }>('/settings/account'),
+        /** The mobile number payment reminders are texted to; blank removes it. */
+        savePhone: (phone: string | null) =>
+            patch<{ message: string; phone: string | null }>('/settings/account/phone', { phone }),
         changePassword: (data: Record<string, unknown>) =>
             patch<{ message: string }>('/settings/account/password', data),
         getBranding: () => get<{ branding: unknown }>('/settings/branding'),
@@ -461,10 +482,22 @@ export const api = {
         get: () => get<{
             subscription: unknown; plan: string; trialEndsAt: string | null;
             /** The plans the server actually charges for — the page renders these, never its own list. */
-            plans: { key: string; label: string; amountCents: number; recurring: boolean; branches: number | null; features: string[] }[];
+            plans: {
+                key: string; label: string; amountCents: number; recurring: boolean;
+                /** The monthly upkeep owed from the second month; null = the plan has none. */
+                maintenanceCents: number | null;
+                branches: number | null; features: string[];
+            }[];
+            /** Set for a Standard/Premium plan that owes monthly maintenance; null otherwise. */
+            maintenance: { amountCents: number; plan: string; paidThrough: string } | null;
+            /** The ways to pay ahead (BYOD and maintenance): months covered, and months actually charged. */
+            prepay: { months: number; billedMonths: number }[];
+            access: AccessInfo;
         }>('/billing/payments'),
-        /** Starts a Paynow payment for the plan; the server prices it. */
-        subscribe: (plan: string) => post<{ redirectUrl: string }>('/billing/payments/subscribe', { plan }),
+        /** Starts a Paynow payment for the plan; the server prices it. `months` only counts for BYOD, which can be paid ahead. */
+        subscribe: (plan: string, months = 1) => post<{ redirectUrl: string }>('/billing/payments/subscribe', { plan, months }),
+        /** Starts a Paynow payment for `months` of maintenance on the current Standard/Premium plan. */
+        payMaintenance: (months = 1) => post<{ redirectUrl: string }>('/billing/payments/maintenance', { months }),
     },
 
     fiscalisation: {

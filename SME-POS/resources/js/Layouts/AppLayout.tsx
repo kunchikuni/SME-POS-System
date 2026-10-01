@@ -3,6 +3,8 @@ import { useState, type PropsWithChildren, type ReactNode } from "react";
 import { useAuth } from "../lib/auth.js";
 import { useDarkMode } from "../lib/useDarkMode.js";
 import { useOnlineStatus } from "../lib/useOnlineStatus.js";
+import { BLOCKED_PAYMENTS_PATH, isFeatureLocked, isPaymentsPath, type GatedFeature } from "../lib/billing.js";
+import PaymentBanner from "../Components/PaymentBanner.js";
 
 /**
  * Dashboard shell — left sidebar + top bar.
@@ -17,7 +19,12 @@ interface NavItem {
   match?: (url: string) => boolean;
   soon?: boolean;
   badge?: string;
+  /** Set on items that need a plan feature; the plan can lock them (see isFeatureLocked). */
+  feature?: GatedFeature;
 }
+
+/** Why a menu item is locked: the plan lacks the feature, or the business is blocked until it pays. */
+type Lock = "plan" | "payment";
 
 export default function AppLayout({ children }: PropsWithChildren) {
   const { user, tenant, logout } = useAuth();
@@ -41,7 +48,7 @@ export default function AppLayout({ children }: PropsWithChildren) {
     { label: "Transactions", href: "/transactions", icon: <IconReceipt />, match: (u) => u.startsWith("/transactions") },
     { label: "Customers", href: "/customers", icon: <IconUsers />, match: (u) => u.startsWith("/customers") },
     { label: "Reports", href: "/analytics", icon: <IconChart />, match: (u) => u.startsWith("/analytics") },
-    { label: "AI Insights", href: "/ai-insights", icon: <IconSparkle />, match: (u) => u.startsWith("/ai-insights") },
+    { label: "AI Insights", href: "/ai-insights", icon: <IconSparkle />, feature: "aiInsights", match: (u) => u.startsWith("/ai-insights") },
     { label: "Staff Management", href: "/staff", icon: <IconUsers />, match: (u) => u.startsWith("/staff") },
     { label: "Tasks", href: "/tasks", icon: <IconTasks />, match: (u) => u.startsWith("/tasks") },
     { label: "Branches", href: "/branches", icon: <IconStore />, match: (u) => u.startsWith("/branches") },
@@ -51,10 +58,21 @@ export default function AppLayout({ children }: PropsWithChildren) {
     ...(!tenant?.modes || tenant.modes.includes("restaurant")
       ? [{ label: "Kitchen", href: "/kitchen", icon: <IconChef />, match: (u: string) => u.startsWith("/kitchen") }]
       : []),
-    { label: "Fiscalisation", href: "/settings/fiscalisation", icon: <IconChip />, badge: "ADD-ON", match: (u) => u.startsWith("/settings/fiscalisation") },
+    { label: "Fiscalisation", href: "/settings/fiscalisation", icon: <IconChip />, badge: "ADD-ON", feature: "fiscalisation", match: (u) => u.startsWith("/settings/fiscalisation") },
     { label: "Payments", href: "/settings/payments", icon: <IconCard />, match: (u) => u.startsWith("/settings/payments") },
-    { label: "HR & Payroll", href: "/payroll", icon: <IconBriefcase />, match: (u) => u.startsWith("/payroll") },
+    { label: "HR & Payroll", href: "/payroll", icon: <IconBriefcase />, feature: "payroll", match: (u) => u.startsWith("/payroll") },
   ];
+
+  // While the business is blocked only Payments opens (the server answers 402
+  // to everything else), so every other item says so instead of leading to a
+  // page that can't load. Otherwise an item is locked only if the plan lacks
+  // its feature — it stays clickable, because the page explains what unlocks it.
+  const access = tenant?.access;
+  const lockFor = (item: NavItem): Lock | undefined => {
+    if (item.href && isPaymentsPath(item.href)) return undefined;
+    if (access?.blocked) return "payment";
+    return isFeatureLocked(access, item.feature) ? "plan" : undefined;
+  };
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
@@ -80,7 +98,7 @@ export default function AppLayout({ children }: PropsWithChildren) {
 
           <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-4">
             {nav.map((item) => (
-              <SidebarLink key={item.label} item={item} url={url} color={primary} />
+              <SidebarLink key={item.label} item={item} url={url} color={primary} lock={lockFor(item)} />
             ))}
           </nav>
 
@@ -90,6 +108,7 @@ export default function AppLayout({ children }: PropsWithChildren) {
                 item={{ label: "Settings", href: "/settings/general", icon: <IconGear />, match: (u) => u.startsWith("/settings") }}
                 url={url}
                 color={primary}
+                lock={access?.blocked ? "payment" : undefined}
               />
             </div>
           )}
@@ -181,6 +200,9 @@ export default function AppLayout({ children }: PropsWithChildren) {
             </div>
           </header>
 
+          {/* Payments carries its own, fuller explanation of the same thing. */}
+          {!isPaymentsPath(url) && <PaymentBanner access={access} />}
+
           <main className="flex-1 px-4 py-6 lg:px-8">{children}</main>
         </div>
       </div>
@@ -188,14 +210,15 @@ export default function AppLayout({ children }: PropsWithChildren) {
   );
 }
 
-function SidebarLink({ item, url, color }: { item: NavItem; url: string; color?: string }) {
+function SidebarLink({ item, url, color, lock }: { item: NavItem; url: string; color?: string; lock?: Lock }) {
   const active = item.href ? (item.match ? item.match(url) : url.startsWith(item.href)) : false;
 
   const content = (
     <>
       <span className="shrink-0">{item.icon}</span>
       <span className="flex-1 truncate">{item.label}</span>
-      {item.badge && (
+      {lock && <IconLock />}
+      {item.badge && !lock && (
         <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
           {item.badge}
         </span>
@@ -216,11 +239,27 @@ function SidebarLink({ item, url, color }: { item: NavItem; url: string; color?:
     );
   }
 
+  // A blocked business can't open the page, so the link takes it to Payments
+  // (where the reason is spelled out); a plan lock still opens the page, which
+  // shows what the feature is and how to get it.
+  if (lock === "payment") {
+    return (
+      <Link
+        to={BLOCKED_PAYMENTS_PATH}
+        className={`${base} text-muted/60 hover:bg-canvas`}
+        title="Pay to unlock"
+      >
+        {content}
+      </Link>
+    );
+  }
+
   return (
     <Link
       to={item.href}
       className={`${base} ${active ? "bg-brand-50 text-brand-700" : "text-muted hover:bg-canvas hover:text-ink"}`}
       style={active && color ? { background: `${color}14`, color } : undefined}
+      title={lock === "plan" ? "Not on your plan — upgrade to unlock" : undefined}
     >
       {content}
     </Link>
@@ -245,6 +284,7 @@ function IconCard() { return <svg width="18" height="18" viewBox="0 0 24 24" {..
 function IconBriefcase() { return <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18" /></svg>; }
 function IconGear() { return <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><circle cx="12" cy="12" r="3.2" /><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l1.9-1.4-2-3.4-2.2.8a7.7 7.7 0 0 0-2.6-1.5L14 2h-4l-.5 2.9a7.7 7.7 0 0 0-2.6 1.5l-2.2-.8-2 3.4L4.6 10.5a7.6 7.6 0 0 0 0 3L2.7 15l2 3.4 2.2-.8c.76.66 1.65 1.17 2.6 1.5L10 22h4l.5-2.9a7.7 7.7 0 0 0 2.6-1.5l2.2.8 2-3.4Z" /></svg>; }
 function IconSignOut() { return <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" /></svg>; }
+function IconLock() { return <svg width="14" height="14" viewBox="0 0 24 24" className="shrink-0 text-muted/70" aria-label="Locked" role="img" {...stroke}><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>; }
 function IconMenu() { return <svg width="20" height="20" viewBox="0 0 24 24" {...stroke}><path d="M3 6h18M3 12h18M3 18h18" /></svg>; }
 function IconSun() { return <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>; }
 function IconMoon() { return <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z" /></svg>; }

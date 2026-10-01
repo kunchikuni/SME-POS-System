@@ -25,6 +25,9 @@ interface SendEmailInput {
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const FROM_EMAIL = process.env.EMAIL_FROM ?? 'Wivae <notifications@wivae.test>';
 
+/** Whether an email provider is set up. Jobs that must not claim work they can't deliver check this first. */
+export const emailConfigured = () => Boolean(RESEND_API_KEY);
+
 export async function sendEmail({ to, subject, html }: SendEmailInput): Promise<void> {
   if (!RESEND_API_KEY) {
     // Not configured yet — log once per call rather than crash the request

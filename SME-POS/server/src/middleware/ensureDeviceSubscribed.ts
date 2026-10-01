@@ -6,7 +6,7 @@
  * whose trial ended — or who never paid — kept selling and syncing for ever,
  * with only the dashboard locked.
  *
- * What a till gets once its grace period (DEVICE_GRACE_DAYS) is over is a 402
+ * What a till gets once its grace period (see deviceGraceDays) is over is a 402
  * with a stable `subscription_required` code. The till understands it: sales
  * keep being rung up and saved on the device, sync simply pauses, and the
  * queued sales are NOT counted as failed. When the owner renews, the next sync

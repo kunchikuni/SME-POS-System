@@ -166,9 +166,25 @@ but has **not** been exercised against Paynow end to end. Before relying on it,
 make a real small test payment and confirm the plan activates.
 
 Paynow's core API is a single-payment flow, not native recurring billing.
-Standard/Premium are one-time purchases, which fits. BYOD is priced monthly:
-the first payment activates it, but **nothing re-bills it next month** — there
-is no scheduler in this app yet.
+Standard/Premium are bought once (hardware and the first month included), then
+the owner pays a $5 maintenance fee each month. BYOD is priced monthly. Either
+way each payment buys 30-day periods (one, or up to twelve paid ahead) and
+**nothing is charged automatically**. What keeps owners from forgetting is the
+reminder job (`server/src/domain/billing/reminders.ts`): it runs hourly inside
+the API process and emails the owner 5 days before, 1 day before, when the
+period ends, 2 days before the tills pause and when they do — and texts them
+(all but the first) if they gave a mobile number. It is **off unless you set
+`BILLING_REMINDERS=on`** and at least one of `RESEND_API_KEY` / an SMS provider
+(`SMS_PROVIDER` + `TWILIO_*`, see `server/.env.example`) — do that in
+production, or owners get no warning and are simply locked out when the period
+ends (tills after a grace of 14 days for Standard/Premium, 3 for BYOD and
+trials). Leave it off on a development database full of test businesses.
+Texts to Zimbabwe cost roughly $0.20 each through Twilio and $0.02–0.06 through
+local gateways, so budget for it (or add an adapter in `server/src/lib/sms.ts`).
+
+The job records each reminder in a `billing_reminders` table, and texts need
+`users.phone`. A new database gets both from `prisma db push`; an existing one needs
+`npx prisma db execute --file prisma/migrations/20261001000001_billing_reminders/migration.sql`.
 
 ## What is and isn't verified
 

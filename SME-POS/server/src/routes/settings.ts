@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { db } from '../lib/db.js';
+import { normalizePhone } from '../lib/phone.js';
 import type { HonoVars } from '../lib/context.js';
 
 export const settingsRoutes = new Hono<{ Variables: HonoVars }>();
@@ -27,7 +28,25 @@ settingsRoutes.patch('/general', async (ctx) => {
 // GET /settings/account
 accountRoutes.get('/account', async (ctx) => {
   const u = ctx.get('user');
-  return ctx.json({ name: u.name, email: u.email });
+  const row = await db.user.findUnique({ where: { id: u.id }, select: { phone: true } });
+  return ctx.json({ name: u.name, email: u.email, phone: row?.phone ?? null });
+});
+
+// PATCH /settings/account/phone -- the mobile number payment reminders are texted to.
+// Blank removes it (and so stops the texts).
+accountRoutes.patch('/account/phone', async (ctx) => {
+  const u = ctx.get('user');
+  const { phone: raw } = z.object({ phone: z.string().trim().max(30).nullable() }).parse(await ctx.req.json());
+  if (!raw) {
+    await db.user.update({ where: { id: u.id }, data: { phone: null } });
+    return ctx.json({ message: 'Mobile number removed.', phone: null });
+  }
+  const phone = normalizePhone(raw);
+  if (!phone) {
+    return ctx.json({ message: 'That mobile number does not look right.', errors: { phone: 'Enter a mobile number, e.g. 0771234567.' } }, 422);
+  }
+  await db.user.update({ where: { id: u.id }, data: { phone } });
+  return ctx.json({ message: 'Mobile number saved.', phone });
 });
 
 // PATCH /settings/account/password

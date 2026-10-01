@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import AppLayout from "../../Layouts/AppLayout.js";
+import UpgradeRequired from "../../Components/UpgradeRequired.js";
 import { usePageTitle, useQuery, useMutation } from "../../lib/hooks.js";
 import { api } from "../../lib/api.js";
 import { SettingsTabs } from "./SettingsTabs.js";
@@ -42,7 +43,7 @@ const DEFAULT_DEVICE: FiscalDevice = {
  */
 export default function FiscalisationSettings() {
   usePageTitle("Fiscalisation");
-  const { data, loading, refetch } = useQuery(() => api.fiscalisation.get(), []);
+  const { data, loading, errorInfo, refetch } = useQuery(() => api.fiscalisation.get(), []);
 
   const [enabled, setEnabled] = useState(false);
   const [device, setDevice] = useState<FiscalDevice>(DEFAULT_DEVICE);
@@ -114,6 +115,16 @@ export default function FiscalisationSettings() {
         <div className="mt-8 flex justify-center">
           <span className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
         </div>
+      </AppLayout>
+    );
+  }
+
+  // Fiscalisation is Premium-only: a plan without it gets a 403 and no data,
+  // which used to render this config form empty, as though it were usable.
+  if (errorInfo?.code === "plan_upgrade_required") {
+    return (
+      <AppLayout>
+        <UpgradeRequired feature={errorInfo.feature ?? "fiscalisation"} plan={errorInfo.plan} />
       </AppLayout>
     );
   }

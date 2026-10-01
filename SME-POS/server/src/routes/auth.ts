@@ -15,6 +15,8 @@ import { runWithTenant, withoutTenantScope } from '../lib/tenantScope.js';
 import { issueHandoff, redeemHandoff } from '../lib/handoff.js';
 import { LOGIN_FAILURE_LIMIT, clientIp, loginFailures, rateLimitsDisabled, tooManyRequests } from '../lib/rateLimit.js';
 import { BUSINESS_TYPES, BUSINESS_TYPE_KEYS, businessTypeFor } from '../domain/businessTypes.js';
+import { accessSummary } from '../domain/billing/entitlementService.js';
+import { normalizePhone } from '../lib/phone.js';
 import type { HonoVars } from '../lib/context.js';
 
 export const authRoutes = new Hono<{ Variables: HonoVars }>();
@@ -95,7 +97,7 @@ authRoutes.get('/me', async (ctx) => {
     });
 
     return ctx.json({
-        user: { id: user.id, name: user.name, role: user.role, email: user.email || null },
+        user: { id: user.id, name: user.name, role: user.role, email: user.email || null, phone: user.phone ?? null },
         tenant: tenant ? {
             id: tenant.id,
             name: tenant.name,
@@ -103,6 +105,11 @@ authRoutes.get('/me', async (ctx) => {
             currency: tenant.currency,
             plan: tenant.plan,
             trialEndsAt: tenant.trialEndsAt?.toISOString() ?? null,
+            // Where the business stands on payment and which features its plan
+            // has — /me is outside the payment gate, so this is how the
+            // dashboard knows to send a blocked owner to Payments, show a
+            // countdown, and lock menu items the plan doesn't include.
+            access: accessSummary(tenant as any),
             taxRateBps: tenant.taxRateBps,
             branding: tenant.branding,
             modes: branchModes.map((b: { mode: string }) => b.mode),
@@ -141,10 +148,17 @@ const registerHandler = async (ctx: Context<{ Variables: HonoVars }>) => {
                 .regex(WORKSPACE_RE, 'Letters, numbers and dashes only (not at the start or end).'),
             businessType: z.enum(BUSINESS_TYPE_KEYS), // domain/businessTypes.ts
             email: z.string().trim().toLowerCase().email('Enter a valid email.'),
+            // Optional: where payment reminders are texted. Blank is fine.
+            phone: z.string().trim().max(30).optional(),
             password: z.string().min(8, 'At least 8 characters.'),
             pin: z.string().regex(/^\d{4}$/, 'Your till PIN is 4 digits.'),
         })
         .parse(body);
+
+    const phone = data.phone ? normalizePhone(data.phone) : null;
+    if (data.phone && !phone) {
+        return ctx.json({ message: 'That mobile number does not look right.', errors: { phone: 'Enter a mobile number, e.g. 0771234567.' } }, 422);
+    }
 
     if (RESERVED_SUBDOMAINS.has(data.subdomain)) {
         return ctx.json({ message: 'That workspace name is reserved.', errors: { subdomain: 'That name is reserved — try another.' } }, 422);
@@ -212,6 +226,7 @@ const registerHandler = async (ctx: Context<{ Variables: HonoVars }>) => {
                     branchId,
                     name: data.ownerName,
                     email: data.email,
+                    phone,
                     password: passwordHash,
                     pinHash,
                     role: 'owner',

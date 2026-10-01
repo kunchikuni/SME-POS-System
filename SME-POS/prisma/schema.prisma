@@ -50,6 +50,7 @@ model Tenant {
   branches      Branch[]
   users         User[]
   subscriptions Subscription[]
+  billingReminders BillingReminder[]
   categories    Category[]
   products      Product[]
   stockMovements StockMovement[]
@@ -121,6 +122,24 @@ model Subscription {
   @@map("subscriptions")
 }
 
+// A reminder email sent to a business about its trial or paid period running
+// out (server/src/domain/billing/reminders.ts). The row is written BEFORE the
+// email goes out, and the unique key is what stops the hourly job — or two
+// instances of it — from sending the same reminder twice.
+model BillingReminder {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  periodEnd DateTime @map("period_end")                // the trial / paid period end the reminder was about
+  stage     String                                     // soon | tomorrow | ended | pausing | paused
+  channel   String   @default("email")                 // email | sms — each is claimed and retried on its own
+  sentAt    DateTime @default(now()) @map("sent_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, periodEnd, stage, channel])
+  @@map("billing_reminders")
+}
+
 // ---------------------------------------------------------------------------
 // Identity
 // ---------------------------------------------------------------------------
@@ -132,6 +151,7 @@ model User {
   name              String
   email             String
   emailVerifiedAt   DateTime? @map("email_verified_at")
+  phone             String?                                // E.164 mobile ("+263771234567"): where billing reminders are texted
   password          String
   role              String    @default("cashier")          // owner | manager | cashier | waiter
   monthlySalaryCents Int?     @map("monthly_salary_cents") // null = not on payroll
