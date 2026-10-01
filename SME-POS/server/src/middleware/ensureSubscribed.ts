@@ -15,17 +15,20 @@
  *     the SPA — a 302 redirect here gets followed transparently by fetch,
  *     which then tries to JSON.parse the SPA's HTML shell and surfaces a
  *     parse error instead of the real message. The SPA routes the user to
- *     /settings/payments off the 402 code.
+ *     /settings/payments off the 402 code (lib/api.ts raises the event,
+ *     app.tsx's PaymentGate acts on it).
  */
 import { createMiddleware } from 'hono/factory';
-import { hasAccess } from '../domain/billing/entitlementService.js';
+import { blockedNotice, hasAccess } from '../domain/billing/entitlementService.js';
 import type { HonoVars } from '../lib/context.js';
 
 const EXEMPT_SUFFIXES = [
   '/settings/payments',
   '/settings/payments/subscribe',
+  '/settings/payments/maintenance',
   '/billing/payments',
   '/billing/payments/subscribe',
+  '/billing/payments/maintenance',
   '/logout',
 ];
 
@@ -41,13 +44,10 @@ export const ensureSubscribed = createMiddleware<{ Variables: HonoVars }>(
     if (!tenant) return next();
 
     if (!hasAccess(tenant)) {
-      return ctx.json(
-        {
-          message: 'Your trial has ended. Choose a plan to keep using Wivae.',
-          code: 'subscription_required',
-        },
-        402,
-      );
+      // The wording follows why they're blocked (trial over, maintenance
+      // overdue, monthly plan ended); `code` stays stable for the SPA.
+      const { message, reason } = blockedNotice(tenant);
+      return ctx.json({ message, code: 'subscription_required', reason }, 402);
     }
 
     await next();

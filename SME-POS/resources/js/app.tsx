@@ -29,10 +29,12 @@
  *   /settings/fiscalisation → Settings/Fiscalisation
  */
 import '../css/app.css';
-import { StrictMode, lazy, Suspense } from 'react';
+import { StrictMode, lazy, Suspense, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth.js';
+import { PAYMENT_REQUIRED_EVENT } from './lib/api.js';
+import { BLOCKED_PAYMENTS_PATH, isPaymentsPath } from './lib/billing.js';
 
 // ── Lazy page imports ─────────────────────────────────────────────────────────
 const LoginPage         = lazy(() => import('./pages/Auth/Login.js'));
@@ -72,7 +74,7 @@ function PageLoader() {
 
 // ── Auth guard ────────────────────────────────────────────────────────────────
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, tenant, loading } = useAuth();
   const location = useLocation();
   if (loading) return <PageLoader />;
   if (!user) {
@@ -81,7 +83,39 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
     const to = location.pathname + location.search;
     return <Navigate to={`/login?redirectTo=${encodeURIComponent(to)}`} replace />;
   }
+  // The trial or paid month has ended: every page but Payments is shut (the
+  // server answers 402), so go straight there rather than load a page that
+  // can only fail.
+  if (tenant?.access?.blocked && !isPaymentsPath(location.pathname)) {
+    return <Navigate to={BLOCKED_PAYMENTS_PATH} replace />;
+  }
   return <>{children}</>;
+}
+
+/**
+ * Catches the block while the app is open: a month can run out mid-session,
+ * and then the next request comes back 402 (lib/api.ts raises the event). Take
+ * the owner to Payments, and refresh what /me says so the menu and banner agree.
+ */
+function PaymentGate() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { refetch } = useAuth();
+  const here = useRef(location.pathname);
+  here.current = location.pathname;
+  const refetchAuth = useRef(refetch);
+  refetchAuth.current = refetch;
+
+  useEffect(() => {
+    const onBlocked = () => {
+      void refetchAuth.current();
+      if (!isPaymentsPath(here.current)) navigate(BLOCKED_PAYMENTS_PATH, { replace: true });
+    };
+    window.addEventListener(PAYMENT_REQUIRED_EVENT, onBlocked);
+    return () => window.removeEventListener(PAYMENT_REQUIRED_EVENT, onBlocked);
+  }, [navigate]);
+
+  return null;
 }
 
 function RequireGuest({ children }: { children: React.ReactNode }) {
@@ -95,6 +129,7 @@ function RequireGuest({ children }: { children: React.ReactNode }) {
 function App() {
   return (
     <BrowserRouter>
+      <PaymentGate />
       <Suspense fallback={<PageLoader />}>
         <Routes>
           {/* Public */}

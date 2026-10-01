@@ -13,12 +13,15 @@ import {
   type ReactNode,
 } from 'react';
 import { api } from './api.js';
+import type { AccessInfo } from './billing.js';
 
 export interface CurrentUser {
   id: string;
   name: string;
   role: 'owner' | 'manager' | 'cashier' | 'waiter';
   email: string | null;
+  /** The mobile number payment reminders are texted to (E.164), or null. */
+  phone?: string | null;
 }
 
 export interface TenantInfo {
@@ -28,6 +31,8 @@ export interface TenantInfo {
   currency: string;
   plan: string;
   trialEndsAt: string | null;
+  /** Payment standing and plan features (from /me). Absent from a server that predates it. */
+  access?: AccessInfo;
   taxRateBps: number;
   branding: Record<string, string | null> | null;
   /** Till modes in use across live branches, e.g. ["retail"] or ["retail", "restaurant"]. */

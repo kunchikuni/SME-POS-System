@@ -51,6 +51,7 @@ import { resolveTenant } from './middleware/resolveTenant.js';
 import { requireAuth, requireGuest } from './middleware/auth.js';
 import { resolveDevice } from './middleware/resolveDevice.js';
 import { ensureSubscribed } from './middleware/ensureSubscribed.js';
+import { startBillingReminders } from './domain/billing/reminders.js';
 import { ensureDeviceSubscribed } from './middleware/ensureDeviceSubscribed.js';
 import { requireFeature } from './middleware/requireFeature.js';
 
@@ -369,18 +370,24 @@ dashboard.route('/billing', billingRoutes);
 // below, behind its gate.
 
 // Feature-gated sub-routes — each route is now mounted exactly once.
+//
+// Each gate is scoped to ITS OWN path. These sub-apps are mounted at '/', and a
+// `use('*')` inside one applies to every request that reaches it — so the
+// payroll gate used to also run on /settings/fiscalisation, and a Standard
+// business opening Fiscalisation was told "Payroll isn't on your plan" (and one
+// with the ZIMRA add-on but not Premium was blocked outright).
 const aiInsights = new Hono<{ Variables: HonoVars }>();
-aiInsights.use('*', requireFeature('ai insights'));
+aiInsights.use('/ai-insights/*', requireFeature('ai insights'));
 aiInsights.route('/ai-insights', aiInsightsRoutes);
 dashboard.route('/', aiInsights);
 
 const payroll = new Hono<{ Variables: HonoVars }>();
-payroll.use('*', requireFeature('payroll'));
+payroll.use('/payroll/*', requireFeature('payroll'));
 payroll.route('/payroll', payrollRoutes);
 dashboard.route('/', payroll);
 
 const fiscalisation = new Hono<{ Variables: HonoVars }>();
-fiscalisation.use('*', requireFeature('fiscalisation'));
+fiscalisation.use('/settings/fiscalisation/*', requireFeature('fiscalisation'));
 fiscalisation.route('/settings', fiscalisationRoutes);
 dashboard.route('/', fiscalisation);
 
@@ -420,6 +427,8 @@ const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
 serve({ fetch: app.fetch, port: PORT }, () => {
     console.log(`🚀 Wivae API running on http://localhost:${PORT}`);
+    // Emails owners as their trial / paid period runs out (off unless BILLING_REMINDERS=on).
+    startBillingReminders();
 });
 
 export default app;

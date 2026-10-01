@@ -1,4 +1,5 @@
 import AppLayout from "../../Layouts/AppLayout.js";
+import UpgradeRequired from "../../Components/UpgradeRequired.js";
 import { usePageTitle, useQuery } from "../../lib/hooks.js";
 import { api } from "../../lib/api.js";
 
@@ -6,9 +7,19 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export default function AiInsightsIndex() {
   usePageTitle("AI Insights");
-  const { data, loading } = useQuery(() => api.aiInsights.get(), []);
+  const { data, loading, errorInfo } = useQuery(() => api.aiInsights.get(), []);
   const deadStock = (data?.deadStock ?? []) as { id: string; name: string; sku: string }[];
   const lowMargin = (data?.lowMargin ?? []) as { id: string; name: string; sku: string; priceCents: number; costCents: number }[];
+
+  // A plan without AI Insights (BYOD) gets a 403 and no data — say so, rather
+  // than render "No dead stock detected" as though the check had run and passed.
+  if (!loading && errorInfo?.code === "plan_upgrade_required") {
+    return (
+      <AppLayout>
+        <UpgradeRequired feature={errorInfo.feature ?? "ai insights"} plan={errorInfo.plan} />
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>

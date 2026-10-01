@@ -52,7 +52,7 @@ export const TENANT_SCOPED_MODELS = new Set([
   'Branch', 'Subscription', 'User', 'Category', 'Product', 'StockMovement',
   'StockLevel', 'Device', 'Sale', 'VoidRequest', 'SaleLine', 'Payment',
   'RestaurantTable', 'KitchenOrder', 'Task', 'FiscalDevice', 'PayrollRun', 'Payslip',
-  'Customer', 'CustomerPayment',
+  'Customer', 'CustomerPayment', 'BillingReminder',
 ]);
 
 const READ_AND_TARGETED_WRITE_OPS = new Set([

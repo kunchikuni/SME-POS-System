@@ -2,6 +2,7 @@ import { useState } from "react";
 import AppLayout from "../../Layouts/AppLayout.js";
 import { usePageTitle, useQuery, useMutation, useFlash } from "../../lib/hooks.js";
 import { api } from "../../lib/api.js";
+import UpgradeRequired from "../../Components/UpgradeRequired.js";
 
 interface StaffRow {
   id: string;
@@ -34,7 +35,7 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 export default function PayrollIndex() {
   usePageTitle("Payroll");
   const { flash, showFlash } = useFlash();
-  const { data, loading, refetch } = useQuery(() => api.payroll.list(), []);
+  const { data, loading, errorInfo, refetch } = useQuery(() => api.payroll.list(), []);
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
   const [nssaForm, setNssaForm] = useState<{ nssaRateBps: number; nssaCeilingCents: number } | null>(null);
 
@@ -81,6 +82,15 @@ export default function PayrollIndex() {
         <div className="mt-8 flex justify-center">
           <span className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
         </div>
+      </AppLayout>
+    );
+  }
+
+  // Plan gate: show the upgrade card instead of an empty payroll page.
+  if (errorInfo?.code === "plan_upgrade_required") {
+    return (
+      <AppLayout>
+        <UpgradeRequired feature={errorInfo.feature ?? "payroll"} plan={errorInfo.plan} />
       </AppLayout>
     );
   }
