@@ -4,7 +4,8 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db } from '../lib/db.js';
 import type { HonoVars } from '../lib/context.js';
-import { addStarters, missingStarters } from '../domain/catalogue.js';
+import { addStarters, defaultBranch, missingStarters } from '../domain/catalogue.js';
+import { businessTypeFor, isUnstockedCategory } from '../domain/businessTypes.js';
 
 export const productRoutes = new Hono<{ Variables: HonoVars }>();
 
@@ -109,7 +110,13 @@ productRoutes.get('/form-data', async (ctx) => {
     orderBy: { name: 'asc' },
     select: { id: true, name: true },
   });
-  return ctx.json({ categories });
+  const branch = await defaultBranch(tenant.id);
+  const type = businessTypeFor(tenant.mode, branch?.mode);
+  return ctx.json({
+    // `trackStock`: whether a new product in this category should start with
+    // stock tracking on — off for services and cooked dishes (see isUnstockedCategory).
+    categories: categories.map((c: { id: string; name: string }) => ({ ...c, trackStock: !isUnstockedCategory(type, c.name) })),
+  });
 });
 
 // GET /products/suggestions — this business type's ready-made products the
@@ -335,6 +342,39 @@ productRoutes.post('/:id/count', async (ctx) => {
     before,
     counted,
     delta,
+  });
+});
+
+// POST /products/:id/tracking { trackStock } — turn stock tracking off for a
+// product that never had any stock to count (a service added with "Track stock"
+// left ticked), or on for one that should have it.
+//
+// Nothing is deleted: the stock ledger and levels stay as they are. Tracking off
+// makes every till stop counting it (no "in stock" label, no out-of-stock block,
+// no stock movement on a sale), and a sale rung up offline before the till heard
+// about the change has its movement ignored on sync (syncService only applies
+// movements for tracked products). Tracking on starts from whatever level is
+// recorded — a stock count sets it to the real number. Products.updatedAt moves,
+// so every till picks the change up on its next pull.
+productRoutes.post('/:id/tracking', async (ctx) => {
+  const user = ctx.get('user');
+  if (!isAdmin(user.role)) return ctx.json({ message: 'Forbidden.' }, 403);
+
+  const tenant = ctx.get('tenant');
+  const { trackStock } = z.object({ trackStock: z.boolean() }).parse(await ctx.req.json());
+
+  const product = await db.product.findFirst({ where: { id: ctx.req.param('id'), tenantId: tenant.id, deletedAt: null } });
+  if (!product) return ctx.json({ message: 'Not found.' }, 404);
+  if (product.trackStock === trackStock) {
+    return ctx.json({ message: `${product.name} already ${trackStock ? 'tracks' : "doesn't track"} stock.` });
+  }
+
+  await db.product.update({ where: { id: product.id }, data: { trackStock } });
+
+  return ctx.json({
+    message: trackStock
+      ? `${product.name} now tracks stock. Use Count to set how many there are.`
+      : `${product.name} no longer tracks stock.`,
   });
 });
 

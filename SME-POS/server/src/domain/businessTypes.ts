@@ -194,6 +194,25 @@ export function businessTypeFor(stored: string | null | undefined, branchMode?: 
   return BY_KEY.get(stored ?? '') ?? BY_KEY.get(branchMode ?? '') ?? BUSINESS_TYPES[0];
 }
 
+const SERVICE_CATEGORY = /\b(services?|labou?r)\b/i;
+
+/**
+ * Should a new product in this category start WITHOUT stock tracking? A service
+ * or a cooked dish has nothing to count, and a product that is tracked when it
+ * shouldn't be just shows "0 in stock" and gets oversell warnings.
+ *
+ * True when the category's name says service/labour (whatever the business
+ * type), or when every example product this business type ships in a category
+ * of that name is untracked (a restaurant's "Mains", a salon's "Haircuts").
+ * It's only the default — the Add product form still lets the owner flip it.
+ */
+export function isUnstockedCategory(type: BusinessType, categoryName: string): boolean {
+  if (SERVICE_CATEGORY.test(categoryName)) return true;
+  const key = categoryName.trim().toLowerCase();
+  const examples = type.starters.filter((s) => s.category.toLowerCase() === key);
+  return examples.length > 0 && examples.every((s) => s.qty === null);
+}
+
 /**
  * The label + icon to show for ONE branch: "Butchery" for a butchery's
  * branches, not just "Retail" (the till mode several business types share).

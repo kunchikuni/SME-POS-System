@@ -321,9 +321,13 @@ export const api = {
                 '/products',
                 params as Record<string, string> | undefined,
             ),
-        formData: () => get<{ categories: { id: string; name: string }[] }>('/products/form-data'),
+        /** `trackStock` on a category: whether a new product in it should start with stock tracking on (off for services). */
+        formData: () => get<{ categories: { id: string; name: string; trackStock: boolean }[] }>('/products/form-data'),
         create: (data: Record<string, unknown>) => post<{ id: string; sku: string; message: string }>('/products', data),
         delete: (id: string) => del<{ message: string }>(`/products/${id}`),
+        /** Turn stock tracking on or off for an existing product (off = a service / nothing to count). */
+        setTracking: (id: string, trackStock: boolean) =>
+            post<{ message: string }>(`/products/${id}/tracking`, { trackStock }),
         restock: (id: string, qty: number, branchId?: string) =>
             post<{ message: string }>(`/products/${id}/restock`, { qty, branchId }),
         /** Stock take: set a branch's level to what was physically counted. */
