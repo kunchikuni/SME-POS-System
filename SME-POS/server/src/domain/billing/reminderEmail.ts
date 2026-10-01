@@ -9,7 +9,6 @@
  * in a line.
  */
 import type { AccessSummary } from './entitlementService.js';
-import { MAINTENANCE_FEE_CENTS } from './maintenance.js';
 import { PLAN_PRICES, usd } from './pricing.js';
 
 export type ReminderStage = 'soon' | 'tomorrow' | 'ended' | 'pausing' | 'paused';
@@ -23,6 +22,8 @@ export interface ReminderEmailInput {
   endsAt: Date;
   /** When the tills pause (paused). */
   graceEndsAt: Date | null;
+  /** This business's monthly maintenance fee, in cents (Standard and Premium differ); null when it pays none. */
+  feeCents: number | null;
   payUrl: string;
 }
 
@@ -34,14 +35,14 @@ export const emailDate = (d: Date) =>
   d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
 /** What paying costs for this kind of period, as the email quotes it. */
-function price(kind: AccessSummary['kind']): string | null {
-  if (kind === 'maintenance') return usd(MAINTENANCE_FEE_CENTS);
+function price(kind: AccessSummary['kind'], feeCents: number | null): string | null {
+  if (kind === 'maintenance') return feeCents ? usd(feeCents) : 'the monthly maintenance fee';
   if (kind === 'monthly') return usd(PLAN_PRICES.byod.amountCents);
   return null; // a trial: they choose a plan
 }
 
 export function reminderEmail(i: ReminderEmailInput): { subject: string; html: string } {
-  const cost = price(i.kind);
+  const cost = price(i.kind, i.feeCents);
   const end = emailDate(i.endsAt);
   const tillsPause = i.graceEndsAt ? emailDate(i.graceEndsAt) : 'a few days from now';
 
@@ -135,7 +136,7 @@ const smsDate = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', mon
  * same reason; the link says whose it is.
  */
 export function reminderSms(i: ReminderEmailInput): string {
-  const cost = price(i.kind);
+  const cost = price(i.kind, i.feeCents);
   const end = smsDate(i.endsAt);
   const pause = i.graceEndsAt ? smsDate(i.graceEndsAt) : 'soon';
   const thing = i.kind === 'trial' ? 'free trial' : i.kind === 'maintenance' ? `${cost} maintenance` : `${cost} monthly plan`;

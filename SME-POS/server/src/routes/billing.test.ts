@@ -131,7 +131,7 @@ describe('buying Standard or Premium', () => {
     expect(latestPaid().currentPeriodEnd).toEqual(at(30));
   });
 
-  it('refuses to sell a plan the business already paid for — the $5 is what it owes', async () => {
+  it('refuses to sell a plan the business already paid for — the monthly maintenance fee is what it owes', async () => {
     owns('standard', at(-40)); // ran out long ago
     mem.tenant.plan = 'standard';
     const res = await post(appFor(), '/billing/payments/subscribe', { plan: 'standard' });
@@ -151,12 +151,12 @@ describe('buying Standard or Premium', () => {
 });
 
 describe('monthly maintenance', () => {
-  it('costs $5 and is told apart from a plan purchase by its reference', async () => {
+  it("costs the plan's own monthly maintenance fee and is told apart from a plan purchase by its reference", async () => {
     owns('standard', at(10));
     mem.tenant.plan = 'standard';
     const res = await post(appFor(), '/billing/payments/maintenance');
     expect(res.status).toBe(200);
-    expect(mem.initiated[0].amount).toBe(5);
+    expect(mem.initiated[0].amount).toBe(7);
     expect(mem.initiated[0].reference).toMatch(/^maint_t1_/);
     expect(pending()).toMatchObject({ plan: 'standard', status: 'trialing' });
   });
@@ -175,29 +175,29 @@ describe('monthly maintenance', () => {
     mem.tenant.plan = 'standard';
     const app = appFor();
     await post(app, '/billing/payments/maintenance', { months: 3 });
-    expect(mem.initiated[0].amount).toBe(15);
+    expect(mem.initiated[0].amount).toBe(21); // 3 × $7 — no discount
     await paid(app, pending().providerRef);
     expect(latestPaid().currentPeriodEnd).toEqual(at(100)); // 10 days left + 3 × 30
   });
 
-  it('pay for 6 months, get 1 free: charged $25, covered for six', async () => {
+  it('pay for 6 months, get 1 free: charged for five ($35), covered for six', async () => {
     owns('standard', at(10));
     mem.tenant.plan = 'standard';
     const app = appFor();
     await post(app, '/billing/payments/maintenance', { months: 6 });
-    expect(mem.initiated[0].amount).toBe(25);
+    expect(mem.initiated[0].amount).toBe(35);
     expect(mem.initiated[0].reference).toMatch(/^maint_t1_\d+_m6$/); // the months COVERED, not the months charged
     expect(mem.initiated[0].additionalInfo).toContain('1 free');
     await paid(app, pending().providerRef);
     expect(latestPaid().currentPeriodEnd).toEqual(at(190)); // 10 days left + 6 × 30
   });
 
-  it('pay for 12 months, get 2 free: charged $50, covered for twelve', async () => {
+  it('pay for 12 months, get 2 free: Premium is charged for ten ($120), covered for twelve', async () => {
     owns('premium', at(-75));
     mem.tenant.plan = 'premium';
     const app = appFor();
     await post(app, '/billing/payments/maintenance', { months: 12 });
-    expect(mem.initiated[0].amount).toBe(50);
+    expect(mem.initiated[0].amount).toBe(120);
     await paid(app, pending().providerRef);
     expect(latestPaid().currentPeriodEnd).toEqual(at(360)); // from today after a lapse
   });
@@ -221,12 +221,12 @@ describe('monthly maintenance', () => {
     expect(mem.initiated).toHaveLength(0);
   });
 
-  it('after a lapse, one $5 buys a month from today — nothing is back-billed', async () => {
+  it('after a lapse, one payment buys a month from today — nothing is back-billed', async () => {
     owns('premium', at(-75)); // two and a half months behind
     mem.tenant.plan = 'premium';
     const app = appFor();
     await post(app, '/billing/payments/maintenance');
-    expect(mem.initiated[0].amount).toBe(5);
+    expect(mem.initiated[0].amount).toBe(12); // Premium
     await paid(app, pending().providerRef);
     expect(latestPaid().currentPeriodEnd).toEqual(at(30));
   });
@@ -349,7 +349,7 @@ describe('GET /billing/payments', () => {
   it('lists the maintenance fee on Standard and Premium only', async () => {
     const { plans } = await get(appFor());
     expect(Object.fromEntries(plans.map((p: any) => [p.key, p.maintenanceCents]))).toEqual({
-      byod: null, standard: 500, premium: 500,
+      byod: null, standard: 700, premium: 1200,
     });
   });
 
@@ -357,7 +357,7 @@ describe('GET /billing/payments', () => {
     owns('standard', at(10));
     mem.tenant.plan = 'standard';
     const body = await get(appFor());
-    expect(body.maintenance).toMatchObject({ amountCents: 500, plan: 'standard', paidThrough: at(10).toISOString() });
+    expect(body.maintenance).toMatchObject({ amountCents: 700, plan: 'standard', paidThrough: at(10).toISOString() });
     expect(body.access).toMatchObject({ blocked: false, kind: 'maintenance', daysLeft: 10 });
   });
 

@@ -2,8 +2,8 @@ export interface PlanInfo {
   label: string;
   price: number;
   recurring: boolean;
-  /** Monthly upkeep charged from the second month, for plans bought once. */
-  maintenance?: number;
+  /** Pays a monthly maintenance fee from the second month (plans bought once). The amount is deliberately not shown on the site. */
+  maintenance?: boolean;
   branches: number | null;
   best_for: string;
   features: string[];

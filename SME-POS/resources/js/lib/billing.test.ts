@@ -12,7 +12,7 @@ const access = (over: Partial<AccessInfo> = {}): AccessInfo => ({
   kind: "maintenance",
   endsAt: iso(20),
   daysLeft: 20,
-  maintenanceFeeCents: 500,
+  maintenanceFeeCents: 700,
   features: { aiInsights: true, payroll: false, fiscalisation: false },
   ...over,
 });
@@ -33,11 +33,11 @@ describe("paymentNotice — the dashboard banner", () => {
     expect(paymentNotice(access({ kind: "trial", daysLeft: 1, endsAt: iso(1) }))!.title).toBe("Free trial: 1 day left");
   });
 
-  it("reminds a Standard/Premium business of its $5 as the month runs out", () => {
+  it("reminds a Standard/Premium business of its fee as the month runs out", () => {
     expect(paymentNotice(access({ daysLeft: 6, endsAt: iso(6) }))).toBeNull();
     const n = paymentNotice(access({ daysLeft: 5, endsAt: iso(5) }))!;
     expect(n).toMatchObject({ tone: "warn", title: "Monthly maintenance is due in 5 days", cta: "Pay now" });
-    expect(n.body).toContain("$5");
+    expect(n.body).toContain("$7");
   });
 
   it("reminds a BYOD business that its month is ending, without mentioning maintenance", () => {
@@ -55,7 +55,7 @@ describe("paymentNotice — the dashboard banner", () => {
   it("blocks an overdue maintenance month and names the fee", () => {
     const n = paymentNotice(access({ blocked: true, state: "lapsed", daysLeft: null }))!;
     expect(n).toMatchObject({ tone: "danger", title: "Monthly maintenance is overdue", cta: "Pay now" });
-    expect(n.body).toContain("Pay $5");
+    expect(n.body).toContain("Pay $7");
   });
 
   it("tells the owner their tills are still selling during the grace period — and when they stop", () => {
