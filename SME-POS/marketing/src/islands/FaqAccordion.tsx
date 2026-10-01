@@ -10,12 +10,10 @@ const FAQS = [
   { q: "Can I cancel anytime?", a: "BYOD is billed monthly with no lock-in — cancel anytime. Standard and Premium are a once-off payment that includes your first month, then a flat $5 maintenance payment each month. Nothing is charged automatically — we remind you by email and text before each payment is due, and paying ahead earns free months (6 months for the price of 5, 12 for the price of 10). If a payment is missed, your dashboard locks, your tills keep selling for two weeks, and then sync pauses (sales stay saved on the device); one $5 payment brings everything back." },
 ];
 
-/** Ported from Home.tsx's FAQ + FaqItem, merged into one island since each
- * item's open/close state is small and independent — no need for six
- * separate hydration boundaries. */
+/** Each item's open/close state is small and independent — one island, not six. */
 export default function FaqAccordion() {
   return (
-    <div className="mt-10 divide-y divide-hairline">
+    <div className="mt-12 space-y-3">
       {FAQS.map((f) => (
         <FaqItem key={f.q} q={f.q} a={f.a} />
       ))}
@@ -26,17 +24,18 @@ export default function FaqAccordion() {
 function FaqItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="py-4">
+    <div className={`rounded-2xl border bg-surface transition-colors ${open ? "border-brand-500/40" : "border-hairline"}`}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-4 text-left"
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left sm:px-6"
       >
-        <span className="font-medium">{q}</span>
-        <span className={`shrink-0 text-muted transition-transform ${open ? "rotate-45" : ""}`}>
+        <span className="font-semibold">{q}</span>
+        <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-500/10 text-brand-500 transition-transform duration-200 ${open ? "rotate-45" : ""}`}>
           <IconPlus />
         </span>
       </button>
-      {open && <p className="mt-2 text-sm text-muted">{a}</p>}
+      {open && <p className="px-5 pb-5 text-sm leading-relaxed text-muted sm:px-6">{a}</p>}
     </div>
   );
 }

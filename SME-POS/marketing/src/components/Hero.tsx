@@ -1,165 +1,108 @@
-import { IconCheck } from "./Icons";
+import type { CSSProperties } from "react";
+import { IconArrowRight, IconCheck } from "./Icons";
+import DeviceScene from "./Devices";
 import { REGISTER_URL } from "../config";
 
-const DEMO_PRODUCTS = [
-  { name: "Coca-Cola 500ml", price: 1.5 },
-  { name: "Bread — White Loaf", price: 1.2 },
-  { name: "Fresh Milk 1L", price: 2.5 },
-  { name: "Chicken Portions 1kg", price: 5.99 },
+/** Staggers the entrance: each element sets its own delay through --d. */
+const delay = (s: number) => ({ "--d": `${s}s` }) as CSSProperties;
+
+/** The kinds of business sign-up sets up (server/src/domain/businessTypes.ts). */
+const BUSINESS_TYPES = [
+  "Shops", "Supermarkets", "Restaurants", "Bottle stores", "Pharmacies",
+  "Clothing stores", "Butcheries", "Hardware", "Workshops", "Salons",
 ];
 
 /**
- * Ported verbatim from Home.tsx. Hero is deliberately dark REGARDLESS of the
- * page-wide toggle — device mockups read better against a dark stage, and
- * it gives the page one dramatic beat rather than uniform brightness
- * throughout. Everything below responds to the toggle normally.
+ * The hero is deliberately dark whatever the page-wide theme toggle says:
+ * device mockups read best against a dark stage, and it gives the page one
+ * dramatic beat. Everything below it follows the toggle.
+ *
+ * Left: the promise and the call to action. Right: a laptop and a phone in 3D
+ * (components/Devices.tsx) — the dashboard, and a till that is offline and still
+ * selling, with two notes that tell the sync story.
  */
 export default function Hero() {
   return (
-    <section className="relative overflow-hidden bg-[#0a0612] px-6 pb-20 pt-16 sm:pt-24">
-      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[600px] bg-[radial-gradient(ellipse_60%_50%_at_50%_0%,rgba(124,58,237,0.22)_0%,transparent_70%)]" />
-
-      <div className="mx-auto max-w-3xl text-center">
-        <div className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-violet-500/30 bg-violet-500/10 px-4 py-1.5 text-xs font-medium text-violet-300">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          Built to keep selling through load-shedding and dropped signal
-        </div>
-        <h1 className="font-display text-4xl font-bold leading-[1.05] tracking-tight text-white sm:text-6xl">
-          Run your business smarter.
-          <br />
-          <span className="bg-gradient-to-r from-violet-400 via-indigo-400 to-cyan-400 bg-clip-text text-transparent">
-            Sell anywhere.
-          </span>
-        </h1>
-        <p className="mx-auto mt-6 max-w-xl text-lg text-white/60">
-          WivaePOS manages sales, inventory, staff, and reporting in real time across every device and branch —
-          built offline-first for how Zimbabwean businesses actually trade.
-        </p>
-        <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-          <a
-            href={REGISTER_URL}
-            className="rounded-xl bg-gradient-to-r from-violet-500 to-indigo-600 px-7 py-3.5 text-sm font-bold text-white shadow-[0_4px_24px_rgba(124,58,237,0.4)] hover:opacity-90 transition-opacity"
-          >
-            Start 7-day free trial
-          </a>
-          <a
-            href="#pricing"
-            className="rounded-xl border border-white/15 px-7 py-3.5 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors"
-          >
-            See pricing
-          </a>
-        </div>
-        <p className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs text-white/40">
-          <span className="flex items-center gap-1.5"><IconCheck /> 7-day free trial — $0 due today</span>
-          <span className="flex items-center gap-1.5"><IconCheck /> No credit card</span>
-          <span className="flex items-center gap-1.5"><IconCheck /> Cancel anytime</span>
-        </p>
+    <section className="relative isolate overflow-hidden bg-[#0a0612] px-5 pb-20 pt-12 sm:px-6 sm:pt-20 lg:pb-24 lg:pt-24">
+      {/* Glows are radial gradients, not blurred shapes: same look, but no
+          expensive blur filter for a cheap phone to repaint while scrolling. */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10">
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(42rem 36rem at 4% -6%, rgba(124,58,237,0.34), transparent 70%)," +
+              "radial-gradient(36rem 30rem at 98% 14%, rgba(217,70,239,0.17), transparent 70%)," +
+              "radial-gradient(24rem 18rem at 40% 100%, rgba(251,191,36,0.10), transparent 70%)",
+          }}
+        />
+        <div className="hero-grid absolute inset-0" />
       </div>
 
-      <DeviceMockups />
+      <div className="mx-auto grid max-w-6xl items-center gap-16 lg:grid-cols-[1.02fr_1fr] lg:gap-8">
+        <div className="text-center lg:text-left">
+          <div className="rise mx-auto inline-flex max-w-full items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.05] px-4 py-1.5 text-xs font-medium text-violet-200 backdrop-blur lg:mx-0" style={delay(0)}>
+            <span className="relative flex h-2 w-2 shrink-0">
+              <span className="ping-soft absolute inset-0 rounded-full bg-emerald-400" />
+              <span className="relative h-2 w-2 rounded-full bg-emerald-400" />
+            </span>
+            <span className="text-left">Built to keep selling through load-shedding and dropped signal</span>
+          </div>
+
+          <h1 className="rise mt-7 font-display text-[2.15rem] font-extrabold leading-[1.05] tracking-[-0.03em] text-white text-balance sm:text-5xl lg:text-[3.1rem]" style={delay(0.08)}>
+            The smart way to run your business.
+            <span className="relative mt-1 block w-fit max-lg:mx-auto">
+              <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-amber-200 bg-clip-text text-transparent">
+                Online or off.
+              </span>
+              <svg aria-hidden="true" viewBox="0 0 300 14" preserveAspectRatio="none" className="absolute -bottom-2 left-0 h-3 w-full text-accent">
+                <path d="M2 9c35-8 62 6 98-1s64-6 98 0 70 4 100-3" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" opacity="0.9" />
+              </svg>
+            </span>
+          </h1>
+
+          <p className="rise mx-auto mt-8 max-w-xl text-base leading-relaxed text-white/65 sm:text-lg lg:mx-0" style={delay(0.18)}>
+            WivaePOS puts your till, stock, staff and reports in one place, across every branch and device. Sales keep
+            ringing up when the power or the network drops, and sync the moment you're back — made for how Zimbabwean
+            businesses really trade.
+          </p>
+
+          <div className="rise mt-9 flex flex-wrap items-center justify-center gap-3 lg:justify-start" style={delay(0.28)}>
+            <a
+              href={REGISTER_URL}
+              className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-600 px-7 py-3.5 text-sm font-bold text-white shadow-[0_10px_34px_-8px_rgba(124,58,237,0.75)] transition-all hover:-translate-y-0.5 hover:shadow-[0_16px_40px_-8px_rgba(124,58,237,0.9)]"
+            >
+              Start 7-day free trial
+              <span className="transition-transform group-hover:translate-x-0.5"><IconArrowRight /></span>
+            </a>
+            <a
+              href="#pricing"
+              className="rounded-xl border border-white/15 bg-white/[0.03] px-7 py-3.5 text-sm font-semibold text-white/85 transition-colors hover:bg-white/[0.08]"
+            >
+              See pricing
+            </a>
+          </div>
+
+          <p className="rise mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-xs text-white/45 lg:justify-start" style={delay(0.36)}>
+            <span className="flex items-center gap-1.5"><span className="text-emerald-400"><IconCheck /></span> 7-day free trial — $0 due today</span>
+            <span className="flex items-center gap-1.5"><span className="text-emerald-400"><IconCheck /></span> No credit card</span>
+            <span className="flex items-center gap-1.5"><span className="text-emerald-400"><IconCheck /></span> Cancel anytime</span>
+          </p>
+        </div>
+
+        <DeviceScene />
+      </div>
+
+      <div className="rise mx-auto mt-20 max-w-4xl text-center lg:mt-24" style={delay(0.5)}>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/40">Set up for your kind of business</p>
+        <ul className="mt-5 flex flex-wrap justify-center gap-2.5">
+          {BUSINESS_TYPES.map((t) => (
+            <li key={t} className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-1.5 text-sm text-white/70 transition-colors hover:border-violet-400/40 hover:text-white">
+              {t}
+            </li>
+          ))}
+        </ul>
+      </div>
     </section>
-  );
-}
-
-/**
- * Our own device composition, not a copy of any reference layout's specific
- * artwork — a monitor showing the real dashboard's actual layout (KPI cards,
- * revenue chart, top products), a phone showing the real till's product
- * grid (the till genuinely is a mobile-installable PWA), and the actual
- * Bluetooth thermal printer hardware bundle sold on Standard/Premium.
- * Full-bleed and genuinely 3D via real rotateY/rotateX/translateZ
- * transforms per device, not a drop-shadow pretending to be depth.
- */
-function DeviceMockups() {
-  return (
-    <div className="relative mx-auto mt-16 w-full max-w-[1600px] px-4" style={{ perspective: "2400px" }}>
-      <div className="pointer-events-none absolute -inset-20 -z-10 bg-[radial-gradient(ellipse_at_center,rgba(124,58,237,0.18)_0%,transparent_70%)]" />
-      <div className="flex flex-col items-center gap-10 lg:flex-row lg:items-end lg:justify-center lg:gap-0">
-        {/* Monitor — dashboard */}
-        <div
-          className="w-full max-w-3xl lg:-mr-16 lg:w-[58%]"
-          style={{ transform: "rotateY(10deg) rotateX(3deg)", transformStyle: "preserve-3d" }}
-        >
-          <div className="overflow-hidden rounded-t-2xl border border-white/10 bg-white/[0.03] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.7)] backdrop-blur-sm">
-            <div className="flex items-center gap-2 border-b border-white/8 px-5 py-3">
-              <span className="h-2.5 w-2.5 rounded-full bg-white/20" />
-              <span className="h-2.5 w-2.5 rounded-full bg-white/20" />
-              <span className="h-2.5 w-2.5 rounded-full bg-white/20" />
-            </div>
-            <div className="p-6">
-              <div className="mb-5 flex items-center justify-between">
-                <span className="font-display text-base font-bold text-white">WivaePOS</span>
-                <span className="text-xs text-white/40">Welcome back</span>
-              </div>
-              <div className="grid grid-cols-4 gap-3">
-                {[
-                  { l: "Revenue", v: "$4,950", tint: "from-violet-500 to-indigo-500" },
-                  { l: "Orders", v: "129", tint: "from-emerald-500 to-teal-500" },
-                  { l: "Products", v: "86", tint: "from-fuchsia-500 to-violet-500" },
-                  { l: "Staff", v: "12", tint: "from-orange-500 to-amber-500" },
-                ].map((k) => (
-                  <div key={k.l} className="rounded-lg bg-white/5 p-3">
-                    <div className={`mb-1.5 h-1 w-8 rounded-full bg-gradient-to-r ${k.tint}`} />
-                    <div className="text-[11px] text-white/40">{k.l}</div>
-                    <div className="text-lg font-bold text-white">{k.v}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-3 flex h-28 items-end gap-2 rounded-lg bg-white/5 p-3">
-                {[40, 65, 45, 80, 55, 90, 70].map((h, i) => (
-                  <div key={i} className="flex-1 rounded-t bg-gradient-to-t from-violet-500 to-indigo-400" style={{ height: `${h}%` }} />
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="mx-auto h-5 w-32 bg-white/8" />
-          <div className="mx-auto h-2 w-56 rounded-full bg-white/10" />
-        </div>
-
-        {/* Phone — till */}
-        <div
-          className="relative z-10 w-56 shrink-0 lg:w-64"
-          style={{ transform: "rotateY(-14deg) rotateX(2deg) translateZ(60px)", transformStyle: "preserve-3d" }}
-        >
-          <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.03] p-2 shadow-[0_40px_100px_-15px_rgba(0,0,0,0.75)] backdrop-blur-sm">
-            <div className="overflow-hidden rounded-[1.5rem] bg-black/40">
-              <div className="flex items-center justify-between px-4 pt-4">
-                <span className="text-xs font-bold text-white">WivaePOS</span>
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              </div>
-              <div className="grid grid-cols-2 gap-2 p-3">
-                {DEMO_PRODUCTS.map((p) => (
-                  <div key={p.name} className="rounded-lg bg-white/5 p-2.5">
-                    <div className="mb-1.5 h-1 w-5 rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 opacity-70" />
-                    <div className="truncate text-[11px] font-medium text-white/80">{p.name}</div>
-                    <div className="text-xs font-bold text-violet-300">${p.price.toFixed(2)}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="mx-3 mb-3 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 py-2.5 text-center text-xs font-bold text-white">
-                Charge $10.19
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Receipt printer */}
-        <div
-          className="relative hidden shrink-0 lg:-ml-10 lg:mb-2 lg:block"
-          style={{ transform: "rotateY(14deg) rotateX(4deg)", transformStyle: "preserve-3d" }}
-        >
-          <div className="relative">
-            <div className="h-24 w-44 rounded-2xl bg-gradient-to-b from-[#1e1e1e] to-[#0a0a0a] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.7)]" />
-            <div className="absolute inset-x-3 top-3 h-12 rounded-xl bg-white/95 p-2">
-              <div className="h-1.5 w-full bg-slate-300" />
-              <div className="mt-1.5 h-1.5 w-3/4 bg-slate-300" />
-              <div className="mt-1.5 h-1.5 w-5/6 bg-slate-300" />
-            </div>
-            <div className="absolute bottom-3 right-4 h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
-          </div>
-          <p className="mt-3 text-center text-xs text-white/30">Bluetooth thermal printer</p>
-        </div>
-      </div>
-    </div>
   );
 }
