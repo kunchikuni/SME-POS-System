@@ -62,7 +62,7 @@ function TierCard({
   onClick: () => void; comingSoon?: boolean;
 }) {
   return (
-    <div className="relative rounded-2xl border border-hairline bg-surface p-7 transition-colors">
+    <div className="relative rounded-3xl border border-hairline bg-surface p-7 transition-colors">
       {comingSoon && (
         <span className="absolute right-6 top-6 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">
           Coming soon

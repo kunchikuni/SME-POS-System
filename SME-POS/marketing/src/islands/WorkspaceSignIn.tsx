@@ -42,7 +42,7 @@ export default function WorkspaceSignIn() {
   }
 
   return (
-    <div className="flex flex-col gap-6 rounded-2xl border border-hairline bg-surface p-8 md:flex-row md:items-center md:p-10">
+    <div className="flex flex-col gap-6 rounded-3xl border border-hairline bg-surface p-8 md:flex-row md:items-center md:p-10">
       <div className="flex-1">
         <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-brand-500">Already selling with Wivae?</p>
         <h2 className="font-display text-2xl font-bold tracking-tight">Sign in to your workspace</h2>
