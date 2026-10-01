@@ -1,6 +1,7 @@
 import Dexie, { type Table as DexieTable } from 'dexie';
 import type {
   Category,
+  Customer,
   Mutation,
   MutationType,
   Product,
@@ -36,6 +37,13 @@ export interface OutboxEntry {
   createdAt: string;
   attempts: number;
   lastError?: string;
+  /**
+   * ISO timestamp of the most recent delivery attempt. Used by the sync
+   * engine to compute exponential backoff — entries are skipped until
+   * `lastAttemptAt + backoff(attempts) < now`. Absent on brand-new entries
+   * (never attempted) and on entries created before this field was added.
+   */
+  lastAttemptAt?: string;
 }
 
 /** Small key/value store for the sync cursor and similar bookkeeping. */
@@ -50,6 +58,7 @@ export class PosDatabase extends Dexie {
   stock!: DexieTable<StockLevel, string>;
   staff!: DexieTable<StaffMember, string>;
   diningTables!: DexieTable<Table, string>;
+  customers!: DexieTable<Customer, string>;
   sales!: DexieTable<LocalSale, string>;
   outbox!: DexieTable<OutboxEntry, string>;
   meta!: DexieTable<MetaRow, string>;
@@ -74,6 +83,17 @@ export class PosDatabase extends Dexie {
     this.version(2).stores({
       diningTables: 'id, section',
     });
+
+    // v3 adds lastAttemptAt to outbox entries (exponential backoff).
+    // No .upgrade() needed — Dexie stores the full object; the new field is
+    // simply absent (undefined) on existing rows and handled as "never
+    // attempted" by pendingRetryable() in outbox.ts.
+    this.version(3).stores({});
+
+    // v4 adds credit customers (tenant-wide debtor list, synced like staff).
+    this.version(4).stores({
+      customers: 'id, name',
+    });
   }
 }
 
@@ -94,5 +114,5 @@ export async function setCursor(cursor: string): Promise<void> {
 
 /** True once a bootstrap has populated the catalog — i.e. the till is usable. */
 export async function isProvisioned(): Promise<boolean> {
-  return (await getCursor()) !== null && (await db.products.count()) >= 0;
+  return (await getCursor()) !== null;
 }

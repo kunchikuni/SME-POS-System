@@ -1,0 +1,21 @@
+{
+  "id": "/",
+  "name": "Wivae",
+  "short_name": "Wivae",
+  "description": "Run your business: sales, stock, staff and customers.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b0616",
+  "theme_color": "#6d28d9",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Products", "url": "/products" },
+    { "name": "Customers", "url": "/customers" },
+    { "name": "Open the till", "url": "/pos/" }
+  ]
+}

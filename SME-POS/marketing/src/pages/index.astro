@@ -1,0 +1,81 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Nav from "../components/Nav";
+import Hero from "../components/Hero";
+import { OfflineStrip, Features, HowItWorks } from "../components/FeaturesStrip";
+import Pricing from "../components/Pricing";
+import { FooterCta, Footer } from "../components/Footer";
+import FaqAccordion from "../islands/FaqAccordion";
+import EnquiryFlow from "../islands/EnquiryFlow";
+import WorkspaceSignIn from "../islands/WorkspaceSignIn";
+import type { PlanInfo, HardwareInfo, BusinessTierInfo } from "../components/types";
+
+// Static config — restored figures (see the pricing-restore commit).
+// Not fetched from the API: this is a public page with no per-tenant data,
+// and Pricing.tsx's own comment explains why a missing/stale value here
+// shouldn't be able to take the rest of the page down with it.
+const plans: Record<string, PlanInfo> = {
+  byod: { label: "BYOD", price: 19.99, recurring: true, branches: 1, best_for: "A single counter, testing the waters, or already own a tablet and printer", features: ["1 till", "5 staff accounts", "Inventory", "Basic reports", "Offline first", "Cloud synchronization", "Support"] },
+  standard: { label: "Standard", price: 199.99, recurring: false, maintenance: true, branches: 3, best_for: "Growing retail or quick-service shop", features: ["Everything in BYOD", "10\" Android tablet + Bluetooth thermal printer included", "Implementation training included", "Configured, ready to go", "AI Insights", "Task management"] },
+  premium: { label: "Premium", price: 249, recurring: false, maintenance: true, branches: null, best_for: "Multi-branch or restaurant group", features: ["Everything in Standard", "12\" Android tablet (upgraded)", "Payroll & HR", "ZIMRA Fiscalisation included", "Priority support", "Ongoing training & implementation planning"] },
+};
+const hardware: Record<string, HardwareInfo> = {
+  bundle: { label: "Starter bundle (tablet + receipt printer)", price: 120 },
+  printer: { label: "Thermal receipt printer only", price: 40 },
+};
+const businessTier: BusinessTierInfo = {
+  label: "Business",
+  description: "A full counter or kiosk setup with managed hardware, onsite training, and a dedicated account manager.",
+  features: ["Counter hardware bundle", "Onsite setup & training", "Dedicated account manager", "Priority support", "Custom branding", "Multi-branch"],
+};
+const enterpriseTier: BusinessTierInfo = {
+  label: "Enterprise",
+  description: "Custom integrations, multi-location rollouts, and white-label builds for franchises and chains.",
+  features: ["Custom integration", "Franchise/chain rollout", "White-label", "SLA guarantee", "API access", "On-premise option"],
+};
+---
+
+<Layout>
+  <div id="top" class="min-h-screen bg-canvas text-ink transition-colors">
+    <Nav client:load />
+    <Hero />
+    <OfflineStrip />
+    <Features />
+    <HowItWorks />
+    <Pricing plans={plans} hardware={hardware} />
+
+    {/* Business + Enterprise quote flow — a sibling of Pricing, not nested
+        inside it, so this island's hydration boundary is valid Astro (see
+        Pricing.tsx's docblock for why the nested-prop approach doesn't work). */}
+    <section class="px-6 pb-24 transition-colors">
+      <div class="mx-auto max-w-5xl">
+        <div class="mx-auto max-w-xl pt-20 text-center">
+          <h2 class="font-display text-3xl font-extrabold tracking-tight text-balance sm:text-4xl">Need something bigger?</h2>
+          <p class="mt-3 text-base leading-relaxed text-muted">A full counter setup, or a custom build for multiple locations — talk to us and we'll quote it properly.</p>
+        </div>
+        <div class="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <EnquiryFlow client:idle businessTier={businessTier} enterpriseTier={enterpriseTier} />
+        </div>
+      </div>
+    </section>
+
+    <section id="signin" class="border-t border-hairline px-6 py-24 transition-colors">
+      <div class="mx-auto max-w-5xl">
+        <WorkspaceSignIn client:visible />
+      </div>
+    </section>
+
+    <section id="faq" class="border-t border-hairline px-6 py-24 transition-colors">
+      <div class="mx-auto max-w-2xl">
+        <p class="text-center text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">FAQ</p>
+        <h2 class="mt-3 text-center font-display text-3xl font-extrabold tracking-tight text-balance sm:text-5xl">
+          Frequently asked questions
+        </h2>
+        <FaqAccordion client:visible />
+      </div>
+    </section>
+
+    <FooterCta />
+    <Footer />
+  </div>
+</Layout>

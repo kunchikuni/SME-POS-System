@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
-import { getSession, type DeviceSession } from './sync/session';
+import { getSession, clearSession, type DeviceSession } from './sync/session';
 import { endShift, getShift, type Shift } from './pos/shift';
 import { getCursor } from './db/database';
 import { syncManager } from './sync/syncManager';
+import { ApiError } from './sync/apiClient';
 import { useSyncStatus } from './ui/useSyncStatus';
 import { applyBrandTheme } from './pos/theme';
 import { PairDevice } from './ui/PairDevice';
 import { ShiftLogin } from './ui/ShiftLogin';
 import { Till } from './ui/Till';
-import { Splash } from './ui/Shared';
+import { Splash, UpdateNotice } from './ui/Shared';
 
 /**
  * Boot/phase router for the offline-first till:
@@ -22,10 +23,22 @@ import { Splash } from './ui/Shared';
  * Once bootstrapped, every subsequent open works with no network at all.
  */
 export function App() {
+    // The update notice sits above every screen — pairing, loading, PIN login
+    // and the till — so a new version is offered wherever the cashier is.
+    return (
+        <>
+            <AppScreen />
+            <UpdateNotice />
+        </>
+    );
+}
+
+function AppScreen() {
     const [device, setDevice] = useState<DeviceSession | null>(getSession());
     const [shift, setShift] = useState<Shift | null>(getShift());
     const [ready, setReady] = useState(false);
     const [bootFailed, setBootFailed] = useState(false);
+    const [bootBlocked, setBootBlocked] = useState(false); // 402: the business's subscription has ended
     const syncStatus = useSyncStatus();
 
     useEffect(() => {
@@ -40,8 +53,19 @@ export function App() {
                     await syncManager.bootstrap(); // first run only; needs a connection
                 }
                 if (active) setReady(true);
-            } catch {
-                if (active) setBootFailed(true);
+            } catch (err) {
+                // 401 = token revoked or device deleted in the dashboard.
+                // Wipe the stale session so the user lands on the pairing
+                // screen instead of the generic "Couldn't load the catalog"
+                // retry loop, which would retry forever with a dead token.
+                if (err instanceof ApiError && err.status === 401) {
+                    clearSession();
+                    if (active) setDevice(null);
+                } else if (err instanceof ApiError && err.status === 402) {
+                    if (active) setBootBlocked(true);
+                } else {
+                    if (active) setBootFailed(true);
+                }
             }
             syncManager.start();
         })();
@@ -69,6 +93,16 @@ export function App() {
     }, [syncStatus?.settingsChanged, shift]);
 
     if (!device) return <PairDevice onPaired={setDevice} />;
+
+    if (bootBlocked && !ready) {
+        return (
+            <Splash
+                title="Subscription ended"
+                subtitle="This business's subscription has ended, so the till can't finish setting up. Renew it in the dashboard (Settings → Payments), then try again."
+                action={{ label: 'Try again', onClick: () => window.location.reload() }}
+            />
+        );
+    }
 
     if (bootFailed && !ready) {
         return (

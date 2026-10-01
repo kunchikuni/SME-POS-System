@@ -1,18 +1,35 @@
-/node_modules
-/public/build
-/public/hot
-/public/storage
-/storage/*.key
-/vendor
+# ── Node / npm ────────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# ── Environment files ─────────────────────────────────────────────────────────
 .env
+.env.local
 .env.backup
 .env.production
-.phpunit.result.cache
-Homestead.json
-Homestead.yaml
-auth.json
-npm-debug.log
-yarn-error.log
+
+# ── Vite build outputs ────────────────────────────────────────────────────────
+/public/assets/
+/public/pos/
+/public/*.js
+/public/*.css
+/public/manifest.json
+
+# ── Prisma generated client ───────────────────────────────────────────────────
+/generated/prisma
+/server/src/generated/prisma
+
+# ── Editor configs ────────────────────────────────────────────────────────────
 /.idea
 /.vscode
 /.fleet
+
+# ── Laravel archive (preserved for reference, not tracked in git going forward)
+/_laravel-archive/
+
+# ── Misc ──────────────────────────────────────────────────────────────────────
+.npmrc
+.prettierignore
+.prettierrc
+nul

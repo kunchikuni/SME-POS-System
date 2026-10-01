@@ -1,120 +1,81 @@
-import { Head, usePage } from "@inertiajs/react";
-import AppLayout from "../../Layouts/AppLayout";
+import AppLayout from "../../Layouts/AppLayout.js";
+import UpgradeRequired from "../../Components/UpgradeRequired.js";
+import { usePageTitle, useQuery } from "../../lib/hooks.js";
+import { api } from "../../lib/api.js";
 
-interface ReorderRow {
-    product_id: string;
-    name: string;
-    on_hand: number;
-    threshold: number;
-    sold_30d: number;
-    days_left: number | null;
-}
-interface PricingRow {
-    product_id: string;
-    name: string;
-    margin_percent: number | null;
-    qty_sold_30d: number;
-    flag: "low_margin" | "strong_margin";
-}
-interface DeadStockRow {
-    product_id: string;
-    name: string;
-    quantity: number;
-}
-interface Props {
-    reorder: ReorderRow[];
-    pricing: PricingRow[];
-    deadStock: DeadStockRow[];
-    [key: string]: unknown;
-}
+const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export default function AiInsightsIndex() {
-    const { reorder, pricing, deadStock } = usePage<Props>().props;
+  usePageTitle("AI Insights");
+  const { data, loading, errorInfo } = useQuery(() => api.aiInsights.get(), []);
+  const deadStock = (data?.deadStock ?? []) as { id: string; name: string; sku: string }[];
+  const lowMargin = (data?.lowMargin ?? []) as { id: string; name: string; sku: string; priceCents: number; costCents: number }[];
 
+  // A plan without AI Insights (BYOD) gets a 403 and no data — say so, rather
+  // than render "No dead stock detected" as though the check had run and passed.
+  if (!loading && errorInfo?.code === "plan_upgrade_required") {
     return (
-        <AppLayout>
-            <Head title="Insights" />
-            <h1 className="text-xl font-semibold tracking-tight text-ink">Insights</h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted">
-                Rule-based, computed directly from your last 30 days of sales, stock, and margin —
-                not narrative text from a language model. Every number below is a real read from
-                your data.
-            </p>
-
-            <section className="mt-6 rounded-xl border border-hairline bg-surface p-5">
-                <h2 className="font-semibold text-ink">Reorder soon</h2>
-                <p className="text-xs text-muted">Low stock, still selling — most urgent first.</p>
-                {reorder.length === 0 ? (
-                    <Empty label="Nothing urgent — everything low on shelf isn't currently selling." />
-                ) : (
-                    <ul className="mt-4 divide-y divide-hairline">
-                        {reorder.map((r) => (
-                            <li key={r.product_id} className="flex items-center justify-between py-3">
-                                <div>
-                                    <p className="font-medium text-ink">{r.name}</p>
-                                    <p className="text-xs text-muted">
-                                        {r.on_hand} on hand · {r.sold_30d} sold in 30 days
-                                    </p>
-                                </div>
-                                <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-                  {r.days_left !== null ? `~${r.days_left}d left` : "low stock"}
-                </span>
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </section>
-
-            <section className="mt-6 rounded-xl border border-hairline bg-surface p-5">
-                <h2 className="font-semibold text-ink">Pricing worth a look</h2>
-                <p className="text-xs text-muted">Products with a captured cost, flagged by margin.</p>
-                {pricing.length === 0 ? (
-                    <Empty label="No pricing flags — capture product costs to see margin insight here." />
-                ) : (
-                    <ul className="mt-4 divide-y divide-hairline">
-                        {pricing.map((p) => (
-                            <li key={p.product_id} className="flex items-center justify-between py-3">
-                                <div>
-                                    <p className="font-medium text-ink">{p.name}</p>
-                                    <p className="text-xs text-muted">
-                                        {p.margin_percent}% margin · {p.qty_sold_30d} sold in 30 days
-                                    </p>
-                                </div>
-                                {p.flag === "low_margin" ? (
-                                    <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">
-                    Low margin — review price
-                  </span>
-                                ) : (
-                                    <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
-                    Strong seller — protect price
-                  </span>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </section>
-
-            <section className="mt-6 rounded-xl border border-hairline bg-surface p-5">
-                <h2 className="font-semibold text-ink">Dead stock</h2>
-                <p className="text-xs text-muted">In stock, zero sales in 30 days.</p>
-                {deadStock.length === 0 ? (
-                    <Empty label="Nothing gathering dust — everything stocked has sold." />
-                ) : (
-                    <ul className="mt-4 divide-y divide-hairline">
-                        {deadStock.map((d) => (
-                            <li key={d.product_id} className="flex items-center justify-between py-3">
-                                <p className="font-medium text-ink">{d.name}</p>
-                                <span className="tabular-nums text-muted">{d.quantity} on hand</span>
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </section>
-        </AppLayout>
+      <AppLayout>
+        <UpgradeRequired feature={errorInfo.feature ?? "ai insights"} plan={errorInfo.plan} />
+      </AppLayout>
     );
-}
+  }
 
-function Empty({ label }: { label: string }) {
-    return <p className="py-10 text-center text-sm text-muted">{label}</p>;
+  return (
+    <AppLayout>
+      <h1 className="text-xl font-semibold tracking-tight text-ink">AI Insights</h1>
+      <p className="mt-1 text-sm text-muted">Rule-based inventory and pricing analysis</p>
+
+      {loading ? <div className="mt-8 flex justify-center"><Spinner /></div> : (
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <section className="rounded-xl border border-hairline bg-surface p-5">
+            <h2 className="mb-1 font-semibold text-ink">Dead Stock</h2>
+            <p className="mb-4 text-sm text-muted">Products with no sales in the last 30 days</p>
+            {deadStock.length === 0 ? (
+              <p className="text-sm text-positive">✓ No dead stock detected</p>
+            ) : (
+              <ul className="divide-y divide-hairline">
+                {deadStock.map((p) => (
+                  <li key={p.id} className="flex items-center justify-between py-2 text-sm">
+                    <span className="font-medium text-ink">{p.name}</span>
+                    <span className="font-mono text-xs text-muted">{p.sku}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="rounded-xl border border-hairline bg-surface p-5">
+            <h2 className="mb-1 font-semibold text-ink">Low Margin Products</h2>
+            <p className="mb-4 text-sm text-muted">Products where cost is &gt; 60% of price</p>
+            {lowMargin.length === 0 ? (
+              <p className="text-sm text-positive">✓ No low-margin products detected</p>
+            ) : (
+              <ul className="divide-y divide-hairline">
+                {lowMargin.map((p) => {
+                  const margin = p.costCents && p.priceCents ? Math.round((1 - p.costCents / p.priceCents) * 100) : null;
+                  return (
+                    <li key={p.id} className="flex items-center justify-between py-2 text-sm">
+                      <div>
+                        <p className="font-medium text-ink">{p.name}</p>
+                        <p className="text-xs text-muted">
+                          Cost: {money(p.costCents ?? 0)} · Price: {money(p.priceCents)}
+                        </p>
+                      </div>
+                      {margin !== null && (
+                        <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600">
+                          {margin}% margin
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
+    </AppLayout>
+  );
 }
+function Spinner() { return <span className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />; }

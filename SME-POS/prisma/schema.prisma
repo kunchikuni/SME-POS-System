@@ -1,0 +1,640 @@
+// Wivae — Prisma schema
+// Full data model derived from all 35 Laravel migrations.
+// Database: Supabase Postgres (same DB as the Laravel app — no data migration needed).
+//
+// Key invariants carried from the Laravel schema:
+//   - UUID primary keys everywhere (client-generated on the till for offline records)
+//   - Integer minor-unit money columns (amount_cents, price_cents…) — never floats
+//   - tenant_id on every tenant-owned row (global scope equivalent enforced in app code)
+//   - stock_movements is append-only; stock_levels is the cached SUM(delta)
+//   - sales are immutable once written; corrections are new records
+
+generator client {
+  provider = "prisma-client"
+  output   = "../server/src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy & billing
+// ---------------------------------------------------------------------------
+
+model Tenant {
+  id            String    @id @default(uuid()) @db.Uuid
+  name          String
+  subdomain     String    @unique
+  currency      String    @default("USD") @db.Char(3)
+  plan          String    @default("trial")      // trial | byod | standard | pro
+  status        String    @default("active")     // active | suspended
+  trialEndsAt   DateTime? @map("trial_ends_at")
+  zimraEnabled  Boolean   @default(false) @map("zimra_enabled")
+  branding      Json?                            // white-label overrides (jsonb)
+  nextSkuNumber Int       @default(1) @map("next_sku_number")
+  // Settings (added via migration 2026_01_06_000001)
+  taxRateBps    Int       @default(0) @map("tax_rate_bps")   // basis points; 1500 = 15%
+  // Payroll (added via migration 2026_01_11_000001)
+  nssaRateBps   Int       @default(0) @map("nssa_rate_bps")
+  nssaCeilingCents Int    @default(0) @map("nssa_ceiling_cents")
+  // The business TYPE (retail, supermarket, pharmacy, bottlestore… — see
+  // server/src/domain/businessTypes.ts): drives suggested categories and
+  // starter products. Which till a branch opens to is branches.mode.
+  mode          String    @default("retail")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  // Relations
+  branches      Branch[]
+  users         User[]
+  subscriptions Subscription[]
+  billingReminders BillingReminder[]
+  categories    Category[]
+  products      Product[]
+  stockMovements StockMovement[]
+  stockLevels   StockLevel[]
+  devices       Device[]
+  customers     Customer[]
+  customerPayments CustomerPayment[]
+  sales         Sale[]
+  saleLines     SaleLine[]
+  payments      Payment[]
+  tables        RestaurantTable[]
+  kitchenOrders KitchenOrder[]
+  tasks         Task[]
+  fiscalDevice  FiscalDevice?
+  payrollRuns   PayrollRun[]
+  payslips      Payslip[]
+
+  @@index([status])
+  @@map("tenants")
+}
+
+model Branch {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  name        String
+  address     String?
+  isDefault   Boolean   @default(false) @map("is_default")
+  managerId   String?   @map("manager_id") @db.Uuid
+  phone       String?
+  isActive    Boolean   @default(true) @map("is_active")
+  mode        String    @default("retail")                   // retail | restaurant | hardware | workshop
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  // Relations
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  manager     User?     @relation("BranchManager", fields: [managerId], references: [id], onDelete: SetNull)
+  users       User[]
+  devices     Device[]
+  sales       Sale[]
+  customerPayments CustomerPayment[]
+  stockMovements StockMovement[]
+  stockLevels StockLevel[]
+  tables      RestaurantTable[]
+  kitchenOrders KitchenOrder[]
+  tasks       Task[]
+
+  @@index([tenantId])
+  @@map("branches")
+}
+
+model Subscription {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  plan              String                               // byod | standard | pro
+  status            String    @default("trialing")       // trialing | active | past_due | canceled
+  currentPeriodEnd  DateTime? @map("current_period_end")
+  zimraAddon        Boolean   @default(false) @map("zimra_addon")
+  providerRef       String?   @map("provider_ref")       // Paynow reference
+  pollUrl           String?   @map("poll_url")           // Paynow poll URL
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  tenant  Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+// A reminder email sent to a business about its trial or paid period running
+// out (server/src/domain/billing/reminders.ts). The row is written BEFORE the
+// email goes out, and the unique key is what stops the hourly job — or two
+// instances of it — from sending the same reminder twice.
+model BillingReminder {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  periodEnd DateTime @map("period_end")                // the trial / paid period end the reminder was about
+  stage     String                                     // soon | tomorrow | ended | pausing | paused
+  channel   String   @default("email")                 // email | sms — each is claimed and retried on its own
+  sentAt    DateTime @default(now()) @map("sent_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, periodEnd, stage, channel])
+  @@map("billing_reminders")
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  branchId          String?   @map("branch_id") @db.Uuid
+  name              String
+  email             String
+  emailVerifiedAt   DateTime? @map("email_verified_at")
+  phone             String?                                // E.164 mobile ("+263771234567"): where billing reminders are texted
+  password          String
+  role              String    @default("cashier")          // owner | manager | cashier | waiter
+  monthlySalaryCents Int?     @map("monthly_salary_cents") // null = not on payroll
+  pinHash           String?   @map("pin_hash")             // hashed till PIN
+  rememberToken     String?   @map("remember_token")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  // Relations
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch            Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  managedBranches   Branch[]  @relation("BranchManager")
+  sales             Sale[]    @relation("Cashier")
+  tasksAssigned     Task[]    @relation("AssignedTo")
+  tasksCreated      Task[]    @relation("CreatedBy")
+  tasksCompleted    Task[]    @relation("CompletedBy")
+  payrollRunsBy     PayrollRun[] @relation("RunBy")
+  payslips          Payslip[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------
+
+model Category {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  name      String
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@index([tenantId])
+  @@map("categories")
+}
+
+model Product {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  categoryId        String?   @map("category_id") @db.Uuid
+  sku               String
+  barcode           String?
+  name              String
+  brand             String?
+  priceCents        Int       @map("price_cents")
+  costCents         Int?      @map("cost_cents")
+  currency          String    @default("USD") @db.Char(3)
+  taxClass          String    @default("standard") @map("tax_class")
+  type              String    @default("retail")     // retail | restaurant
+  trackStock        Boolean   @default(true) @map("track_stock")
+  lowStockThreshold Int       @default(0) @map("low_stock_threshold")
+  imagePath         String?   @map("image_path")
+  isActive          Boolean   @default(true) @map("is_active")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category        Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  stockMovements  StockMovement[]
+  stockLevels     StockLevel[]
+  saleLines       SaleLine[]
+
+  @@unique([tenantId, sku])
+  @@index([tenantId, barcode])
+  @@index([categoryId])
+  @@map("products")
+}
+
+// ---------------------------------------------------------------------------
+// Inventory ledger (append-only — see ARCHITECTURE.md §5.1)
+// ---------------------------------------------------------------------------
+
+model StockMovement {
+  id         String   @id @db.Uuid                // client-generated offline UUID
+  tenantId   String   @map("tenant_id") @db.Uuid
+  branchId   String   @map("branch_id") @db.Uuid
+  productId  String   @map("product_id") @db.Uuid
+  delta      Int                                   // -1, +50, -3 …
+  reason     String                                // sale | purchase | transfer_in | transfer_out | adjustment | initial
+  ref        String?                               // sale UUID, PO id, transfer id
+  occurredAt DateTime @map("occurred_at")          // when it happened (may be offline, in the past)
+  createdAt  DateTime? @map("created_at")          // when it reached the server
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, branchId, productId])
+  @@index([ref])
+  @@index([occurredAt])
+  @@map("stock_movements")
+}
+
+model StockLevel {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  branchId  String   @map("branch_id") @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  quantity  Int      @default(0)
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, productId])
+  @@index([tenantId, productId])
+  @@map("stock_levels")
+}
+
+// ---------------------------------------------------------------------------
+// POS Devices
+// ---------------------------------------------------------------------------
+
+model Device {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  branchId    String    @map("branch_id") @db.Uuid
+  name        String
+  tokenHash   String    @unique @map("token_hash")  // SHA-256 of the bearer token
+  lastSeenAt  DateTime? @map("last_seen_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  sales   Sale[]
+
+  @@index([tenantId])
+  @@map("devices")
+}
+
+// ---------------------------------------------------------------------------
+// Sales (immutable — see ARCHITECTURE.md §5.2)
+// ---------------------------------------------------------------------------
+
+model Sale {
+  id             String    @id @db.Uuid              // client-generated on till
+  tenantId       String    @map("tenant_id") @db.Uuid
+  branchId       String    @map("branch_id") @db.Uuid
+  deviceId       String?   @map("device_id") @db.Uuid
+  cashierId      String?   @map("cashier_id") @db.Uuid
+  tableId        String?   @map("table_id") @db.Uuid // unconstrained — see migration comment
+  customerId     String?   @map("customer_id") @db.Uuid // set when any payment on this sale has method: 'credit'
+  status         String    @default("completed")      // completed | refunded | voided
+  subtotalCents  Int       @map("subtotal_cents")
+  taxCents       Int       @default(0) @map("tax_cents")
+  gratuityCents  Int       @default(0) @map("gratuity_cents")
+  totalCents     Int       @map("total_cents")
+  currency       String    @default("USD") @db.Char(3)
+  fiscalStatus   String    @default("none") @map("fiscal_status") // none | pending | submitted | failed
+  routeToKitchen Boolean   @default(false) @map("route_to_kitchen")
+  occurredAt     DateTime  @map("occurred_at")        // when rung up (may be offline/past)
+  syncedAt       DateTime? @map("synced_at")          // when it reached the server
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch        Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  device        Device?        @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  cashier       User?          @relation("Cashier", fields: [cashierId], references: [id], onDelete: SetNull)
+  customer      Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  lines         SaleLine[]
+  payments      Payment[]
+  kitchenOrders KitchenOrder[]
+
+  @@index([tenantId, branchId, occurredAt])
+  // dashboard.ts's today/month aggregates and every analytics.ts query
+  // filter on (tenantId, status, occurredAt) but never branchId -- the
+  // index above doesn't serve that shape (branchId sits unfiltered between
+  // the two columns Postgres actually needs). Both indexes coexist because
+  // they serve genuinely different query shapes: branchPerformance groups
+  // BY branch, dashboard/analytics filter BY status.
+  @@index([tenantId, status, occurredAt])
+  @@map("sales")
+}
+
+/// A request to void a completed sale — the compensating-event design from
+/// ARCHITECTURE.md §5.2: completed sales are immutable, so a void is a NEW
+/// record plus reversing stock movements, never an edit. Any dashboard user
+/// may request; only owner/manager may approve or reject. On approval the
+/// sale's status flips to "voided" and one +delta movement (reason "void",
+/// ref = sale id) is appended per original sale movement.
+/// Deliberately relation-free (ids only): keeps this migration additive with
+/// zero churn on existing models; app code joins explicitly.
+model VoidRequest {
+  id           String    @id @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  saleId       String    @map("sale_id") @db.Uuid
+  requestedBy  String    @map("requested_by") @db.Uuid
+  reason       String
+  status       String    @default("pending")          // pending | approved | rejected
+  decidedBy    String?   @map("decided_by") @db.Uuid
+  decidedAt    DateTime? @map("decided_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // "Only one PENDING request per sale" is enforced by a partial unique
+  // index in the SQL migration (Prisma can't express partial indexes):
+  //   CREATE UNIQUE INDEX ... ON void_requests(sale_id) WHERE status = 'pending'
+  // A plain composite unique on (saleId, status) would be wrong — it would
+  // also block a second *rejected* request for the same sale.
+  @@index([saleId])
+  @@index([tenantId, status, createdAt])
+  @@map("void_requests")
+}
+
+model SaleLine {
+  id             String  @id @default(uuid()) @db.Uuid
+  tenantId       String  @map("tenant_id") @db.Uuid
+  saleId         String  @map("sale_id") @db.Uuid
+  productId      String? @map("product_id") @db.Uuid
+  name           String                              // snapshot at time of sale
+  qty            Int
+  unitPriceCents Int     @map("unit_price_cents")
+  lineTotalCents Int     @map("line_total_cents")
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sale    Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([saleId])
+  @@map("sale_lines")
+}
+
+/**
+ * A customer a business extends credit to — informal "tabs" are common in
+ * SME retail, and until now there was no way to represent "sold, not yet
+ * paid" anywhere in this schema at all. balanceCents is the running total
+ * owed, denormalized for fast reads the same way StockLevel caches the
+ * stock_movements ledger — the actual source of truth is still every
+ * individual credit payment recorded against a sale (Payment.method ===
+ * 'credit'), not this field directly. A positive balanceCents means the
+ * customer owes the business money.
+ */
+model Customer {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  name         String
+  phone        String?
+  balanceCents Int       @default(0) @map("balance_cents")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sales    Sale[]
+  payments CustomerPayment[]
+
+  @@index([tenantId, name])
+  @@map("customers")
+}
+
+/**
+ * A repayment against a customer's balance — append-only, same reasoning as
+ * StockMovement: balanceCents on Customer is a cache (denormalized for fast
+ * reads), this ledger is the actual source of truth and the audit trail an
+ * owner needs ("when did they last pay, how much"). id is client-generated
+ * on the till and doubles as the idempotency key, same convention as
+ * StockMovement.id and SaleLine.movement_id.
+ */
+model CustomerPayment {
+  id          String   @id @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  customerId  String   @map("customer_id") @db.Uuid
+  branchId    String   @map("branch_id") @db.Uuid
+  amountCents Int      @map("amount_cents") // always positive — a repayment, reducing balanceCents
+  method      String   @default("cash")     // cash | ecocash | etc, same tender vocabulary as Payment.method
+  occurredAt  DateTime @map("occurred_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  branch   Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, customerId])
+  @@map("customer_payments")
+}
+
+model Payment {
+  id            String  @id @default(uuid()) @db.Uuid
+  tenantId      String  @map("tenant_id") @db.Uuid
+  saleId        String  @map("sale_id") @db.Uuid
+  method        String                                // cash | ecocash | card | other
+  amountCents   Int     @map("amount_cents")
+  receivedCents Int?    @map("received_cents")        // cash only; change = received - amount
+  currency      String  @default("USD") @db.Char(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@map("payments")
+}
+
+// ---------------------------------------------------------------------------
+// Restaurant
+// ---------------------------------------------------------------------------
+
+model RestaurantTable {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  branchId  String    @map("branch_id") @db.Uuid
+  name      String                                // "T1", "Patio 3"
+  section   String?
+  seats     Int       @default(0)
+  isActive  Boolean   @default(true) @map("is_active")
+  sort      Int       @default(0)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch        Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  kitchenOrders KitchenOrder[]
+
+  @@index([tenantId, branchId, isActive])
+  @@map("tables")
+}
+
+model KitchenOrder {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  branchId  String    @map("branch_id") @db.Uuid
+  saleId    String    @map("sale_id") @db.Uuid
+  tableId   String?   @map("table_id") @db.Uuid
+  ticketNo  Int?      @map("ticket_no")               // short per-branch/day display number
+  status    String    @default("new")                  // new | preparing | ready | served
+  placedAt  DateTime  @map("placed_at")
+  readyAt   DateTime? @map("ready_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  sale   Sale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  table  RestaurantTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, branchId, status])
+  @@map("kitchen_orders")
+}
+
+// ---------------------------------------------------------------------------
+// Operations
+// ---------------------------------------------------------------------------
+
+model Task {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  branchId    String?   @map("branch_id") @db.Uuid
+  title       String
+  notes       String?
+  assignedTo  String?   @map("assigned_to") @db.Uuid
+  createdBy   String?   @map("created_by") @db.Uuid
+  completedBy String?   @map("completed_by") @db.Uuid
+  status      String    @default("open")              // open | done
+  dueAt       DateTime? @map("due_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch    Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  assignee  User?   @relation("AssignedTo", fields: [assignedTo], references: [id], onDelete: SetNull)
+  creator   User?   @relation("CreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  completer User?   @relation("CompletedBy", fields: [completedBy], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, branchId, status])
+  @@index([tenantId, assignedTo, status])
+  @@map("tasks")
+}
+
+// ---------------------------------------------------------------------------
+// Fiscal (ZIMRA FDMS)
+// ---------------------------------------------------------------------------
+
+model FiscalDevice {
+  id                    String    @id @default(uuid()) @db.Uuid
+  tenantId              String    @unique @map("tenant_id") @db.Uuid  // one device per tenant
+  branchId              String?   @map("branch_id") @db.Uuid
+
+  // Entered by the owner from the ZIMRA portal
+  zimraDeviceId         Int?      @map("zimra_device_id")
+  activationKey         String?   @map("activation_key") @db.Char(8)
+  deviceSerialNo        String?   @map("device_serial_no") @db.VarChar(20)
+  deviceModelName       String    @default("Wivae POS") @map("device_model_name")
+  deviceModelVersion    String    @default("1.0") @map("device_model_version")
+
+  // Populated by verifyTaxpayerInformation
+  taxpayerName          String?   @map("taxpayer_name")
+  taxpayerTin           String?   @map("taxpayer_tin") @db.VarChar(10)
+  vatNumber             String?   @map("vat_number") @db.VarChar(9)
+  deviceBranchName      String?   @map("device_branch_name")
+  deviceBranchAddress   Json?     @map("device_branch_address")
+  verifiedAt            DateTime? @map("verified_at")
+
+  // Populated by registerDevice (not yet implemented)
+  certificate           String?   @db.Text
+  privateKey            String?   @map("private_key") @db.Text
+  certificateValidTill  DateTime? @map("certificate_valid_till")
+
+  // Fiscal day state (not yet implemented)
+  fiscalDayStatus       String    @default("not_registered") @map("fiscal_day_status")
+  fiscalDayNo           Int?      @map("fiscal_day_no")
+  receiptGlobalNo       BigInt?   @map("receipt_global_no")
+
+  environment           String    @default("test")           // test | production
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("fiscal_devices")
+}
+
+// ---------------------------------------------------------------------------
+// Payroll (salary-based MVP)
+// ---------------------------------------------------------------------------
+
+model PayrollRun {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  periodMonth DateTime @map("period_month") @db.Date   // first day of the paid month
+  runById     String?  @map("run_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  runBy    User?      @relation("RunBy", fields: [runById], references: [id], onDelete: SetNull)
+  payslips Payslip[]
+
+  @@unique([tenantId, periodMonth])
+  @@map("payroll_runs")
+}
+
+model Payslip {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  payrollRunId  String   @map("payroll_run_id") @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  grossCents    Int      @map("gross_cents")
+  payeCents     Int      @map("paye_cents")
+  aidsLevyCents Int      @map("aids_levy_cents")
+  nssaCents     Int      @map("nssa_cents")
+  netCents      Int      @map("net_cents")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@map("payslips")
+}
+
+// ---------------------------------------------------------------------------
+// Marketing / Enquiries (no tenant — captured before tenant creation)
+// ---------------------------------------------------------------------------
+
+model Enquiry {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  businessName String   @map("business_name")
+  email        String
+  phone        String?
+  message      String?  @db.Text
+  status       String   @default("new")  // new | contacted | closed
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("enquiries")
+}

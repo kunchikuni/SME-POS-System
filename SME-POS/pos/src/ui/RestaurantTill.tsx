@@ -4,23 +4,30 @@ import { db } from '../db/database';
 import { formatMoney } from '../lib/money';
 import {
     addProduct,
+    atStockLimit,
+    availableFor,
     cartTotals,
     emptyCart,
+    qtyInCart,
     removeLine,
     setQty,
+    stockLimitMessage,
     type Cart,
 } from '../pos/cart';
 import type { DeviceSession } from '../sync/session';
 import type { Shift } from '../pos/shift';
 import type {
     Category,
+    Customer,
     Product,
     SalePayload,
     StockLevel,
     Table,
 } from '../types/contract';
-import { SyncBadge, SettingsChangedBanner, ModePill, ThemeToggle } from './Shared';
+import { SyncBadge, SettingsChangedBanner, ModePill, ThemeToggle, OutboxStuckBanner, SubscriptionBanner, SyncedToast, InstallAppButton } from './Shared';
 import { Checkout } from './Checkout';
+import { ReceiveStock } from './ReceiveStock';
+import { RecordPayment } from './RecordPayment';
 import { Receipt } from './Receipt';
 import { PrinterSettings } from './PrinterSettings';
 import { TasksPanel } from './TasksPanel';
@@ -63,6 +70,24 @@ export function RestaurantTill({
     const [showScanner,   setShowScanner]   = useState(false);
     const [scanMiss,      setScanMiss]      = useState<string | null>(null);
     const [scanUnsupported,setScanUnsupported]= useState(false);
+    const [stockNotice,   setStockNotice]   = useState<string | null>(null);
+    const [showReceiveStock,  setShowReceiveStock]  = useState(false);
+    const [showRecordPayment, setShowRecordPayment] = useState(false);
+    const customers = useLiveQuery(() => db.customers.toArray(), [], [] as Customer[]);
+    // Receive stock / Record payment are owner/manager-only, same as RetailTill.
+    const isManager = shift.role === 'owner' || shift.role === 'manager';
+
+    // Rendered from both the floor-plan and menu views (both headers open them).
+    const managerPanels = (
+        <>
+            {showReceiveStock && (
+                <ReceiveStock branchId={device.branch.id} products={products} stockRows={stockRows} onClose={() => setShowReceiveStock(false)} />
+            )}
+            {showRecordPayment && (
+                <RecordPayment customers={customers} onClose={() => setShowRecordPayment(false)} />
+            )}
+        </>
+    );
 
     const stock = useMemo(() => {
         const map = new Map<string, number>();
@@ -95,13 +120,24 @@ export function RestaurantTill({
         return [...groups.entries()];
     }, [tables]);
 
+    /** Tap or scan: adds one, unless the cart already holds everything on hand. */
+    function tryAdd(p: Product) {
+        const available = availableFor(p, stock);
+        if (available !== undefined && qtyInCart(cart, p.id) >= available) {
+            setStockNotice(stockLimitMessage(p, available));
+            return;
+        }
+        setStockNotice(null);
+        setCart((c) => addProduct(c, p, available));
+    }
+
     function handleScan(code: string) {
         setShowScanner(false);
         const trimmed = code.trim();
         const match = products.find(
             (p) => p.is_active && (p.barcode === trimmed || p.sku === trimmed),
         );
-        if (match) { setScanMiss(null); setCart((c) => addProduct(c, match)); }
+        if (match) { setScanMiss(null); tryAdd(match); }
         else        { setScanMiss(trimmed); setSearch(trimmed); }
     }
 
@@ -138,8 +174,8 @@ export function RestaurantTill({
         return (
             <Receipt
                 sale={lastSale}
-                tenantName={device.tenant.name}
-                branchName={device.branch.name}
+                device={device}
+                cashierName={shift.cashierName}
                 onDone={newOrder}
             />
         );
@@ -149,6 +185,9 @@ export function RestaurantTill({
     if (view === 'floor') {
         return (
             <div className="min-h-dvh flex flex-col resto-floor-bg">
+                <OutboxStuckBanner />
+                <SubscriptionBanner />
+                <SyncedToast />
                 <SettingsChangedBanner />
                 <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-4 border-b border-white/6">
                     <div className="flex items-center gap-3">
@@ -163,13 +202,21 @@ export function RestaurantTill({
                     <div className="flex flex-wrap items-center gap-3">
                         <SyncBadge />
                         <ThemeToggle />
-                        <ModePill mode="restaurant" />
-                        <TasksButton onClick={() => setShowTasks(true)} />
+                        <InstallAppButton />
+                        <ModePill mode="restaurant" kind={device.branch.kind} />
+                        {/* Tasks live here too, so a new one reaches whoever is on the floor plan. */}
+                        <TasksButton cashierId={shift.cashierId} onClick={() => setShowTasks(true)} />
+                        {/* Managers usually start here, on the floor plan — so the
+                            manager actions are on this header too, not only the menu's. */}
+                        {isManager && <button onClick={() => setShowReceiveStock(true)}  className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Receive stock</button>}
+                        {isManager && <button onClick={() => setShowRecordPayment(true)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Record payment</button>}
                         <button onClick={onEndShift} className="rounded-lg px-3 py-1.5 text-xs font-medium text-red-400/80 hover:bg-red-500/10 hover:text-red-300 transition-colors">
                             End shift
                         </button>
                     </div>
                 </header>
+                {showTasks && <TasksPanel cashierId={shift.cashierId} onClose={() => setShowTasks(false)} />}
+                {managerPanels}
 
                 <div className="flex-1 overflow-y-auto px-5 py-6 dark-scroll">
                     <div className="mb-6 flex items-center justify-between">
@@ -221,7 +268,10 @@ export function RestaurantTill({
     }
 
     // ── Catalog + order ────────────────────────────────────────────────────
-    const CartContent = () => (
+    // Called as {renderCart()}, not mounted as {renderCart()} — see the same
+    // note in RetailTill: a component declared inside the till remounts on
+    // every render (lost focus, reset scroll in the order list).
+    const renderCart = () => (
         <div className="flex h-full flex-col dark-scroll">
             {/* Cart header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
@@ -267,8 +317,9 @@ export function RestaurantTill({
                                 >−</button>
                                 <span className="w-5 text-center text-sm font-semibold text-white tabular-nums">{line.qty}</span>
                                 <button
-                                    onClick={() => setCart((c) => setQty(c, line.product.id, line.qty + 1))}
-                                    className="h-6 w-6 rounded-md bg-white/8 text-slate-300 hover:bg-white/14 text-xs font-bold transition-colors flex items-center justify-center"
+                                    onClick={() => setCart((c) => setQty(c, line.product.id, line.qty + 1, availableFor(line.product, stock)))}
+                                    disabled={atStockLimit(line, stock)}
+                                    className="h-6 w-6 rounded-md bg-white/8 text-slate-300 hover:bg-white/14 text-xs font-bold transition-colors flex items-center justify-center disabled:opacity-30 disabled:hover:bg-white/8"
                                 >+</button>
                             </div>
                             <div className="w-16 text-right text-sm font-semibold text-white tabular-nums shrink-0">
@@ -317,6 +368,9 @@ export function RestaurantTill({
 
     return (
         <div className="flex min-h-dvh flex-col resto-floor-bg">
+            <OutboxStuckBanner />
+            <SubscriptionBanner />
+            <SyncedToast />
             <SettingsChangedBanner />
 
             <div className="flex flex-1 flex-col lg:flex-row">
@@ -343,8 +397,11 @@ export function RestaurantTill({
                         <div className="flex flex-wrap items-center gap-3">
                             <SyncBadge />
                             <ThemeToggle />
-                            <ModePill mode="restaurant" />
-                            <TasksButton onClick={() => setShowTasks(true)} />
+                            <InstallAppButton />
+                            <ModePill mode="restaurant" kind={device.branch.kind} />
+                            <TasksButton cashierId={shift.cashierId} onClick={() => setShowTasks(true)} />
+                            {isManager && <button onClick={() => setShowReceiveStock(true)}  className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Receive stock</button>}
+                            {isManager && <button onClick={() => setShowRecordPayment(true)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Record payment</button>}
                             <button onClick={() => setShowPrinter(true)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Printer</button>
                             <button onClick={() => setView('floor')}     className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors">Floor plan</button>
                             <button onClick={onEndShift}                 className="rounded-lg px-3 py-1.5 text-xs font-medium text-red-400/80 hover:bg-red-500/10 hover:text-red-300 transition-colors">End shift</button>
@@ -353,6 +410,7 @@ export function RestaurantTill({
 
                     {showPrinter && <PrinterSettings onClose={() => setShowPrinter(false)} />}
                     {showTasks   && <TasksPanel cashierId={shift.cashierId} onClose={() => setShowTasks(false)} />}
+                    {managerPanels}
 
                     {/* Search + scan */}
                     <div className="px-5 pt-4 pb-3 flex gap-2">
@@ -381,6 +439,9 @@ export function RestaurantTill({
                     )}
                     {scanMiss && (
                         <p className="mx-5 mb-3 text-xs text-amber-400">No item matches "{scanMiss}".</p>
+                    )}
+                    {stockNotice && (
+                        <p className="mx-5 mb-3 text-xs text-red-400">{stockNotice}</p>
                     )}
                     {showScanner && (
                         <ScannerModal onDetected={handleScan} onClose={() => setShowScanner(false)} />
@@ -413,12 +474,13 @@ export function RestaurantTill({
                         ) : (
                             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
                                 {visible.map((p, i) => {
-                                    const qty = stock.get(p.id);
-                                    const out = p.track_stock && qty !== undefined && qty <= 0;
+                                    const available = availableFor(p, stock);
+                                    const out = available === 0;
+                                    const left = available === undefined ? undefined : available - qtyInCart(cart, p.id);
                                     return (
                                         <button
                                             key={p.id}
-                                            onClick={() => !out && setCart((c) => addProduct(c, p))}
+                                            onClick={() => tryAdd(p)}
                                             disabled={out}
                                             className="product-card product-card-resto flex flex-col rounded-2xl bg-white/5 p-3.5 text-left ring-1 ring-white/8 disabled:opacity-40 anim-pop-in"
                                             style={{ animationDelay: `${Math.min(i * 20, 200)}ms` }}
@@ -432,7 +494,7 @@ export function RestaurantTill({
                       </span>
                                             {p.track_stock && (
                                                 <span className={`mt-1 text-[10px] font-medium ${out ? 'text-red-400' : 'text-slate-500'}`}>
-                          {out ? 'Out of stock' : `${qty ?? 0} left`}
+                          {out ? 'Out of stock' : left === 0 ? `All ${available} on order` : `${available} left`}
                         </span>
                                             )}
                                         </button>
@@ -445,7 +507,7 @@ export function RestaurantTill({
 
                 {/* ── RIGHT: Cart sidebar ────────────────────────────────────── */}
                 <aside className="sidebar-resto hidden border-l border-white/6 lg:flex lg:w-96 lg:flex-col">
-                    <CartContent />
+                    {renderCart()}
                 </aside>
 
                 {/* Mobile floating pill */}
@@ -473,7 +535,7 @@ export function RestaurantTill({
                                 <div className="h-1 w-10 rounded-full bg-white/15" />
                             </div>
                             <div className="max-h-[calc(88vh-24px)] overflow-y-auto dark-scroll">
-                                <CartContent />
+                                {renderCart()}
                             </div>
                         </div>
                     </div>

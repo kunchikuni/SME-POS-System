@@ -1,0 +1,35 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#6d28d9" />
+
+    <!-- SEO -->
+    <title>Wivae — POS &amp; Business Management</title>
+    <meta name="description" content="Wivae is an offline-first point-of-sale and business management platform for small and medium businesses." />
+    <meta name="robots" content="noindex" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- Installable app: with a manifest, Chrome/Edge offer "Install" in the
+         address bar, and once installed show "Open in app" whenever the
+         dashboard is opened in a normal tab — the browser's own UI, no
+         instructions of ours. The till (/pos/) has its own manifest and is
+         a separate, more specific app. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Wivae Dashboard" />
+    <meta property="og:description" content="Manage your business with Wivae." />
+    <meta property="og:type" content="website" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/resources/js/app.tsx"></script>
+  </body>
+</html>
