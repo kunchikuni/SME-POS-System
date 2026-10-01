@@ -15,9 +15,9 @@ import type { PlanInfo, HardwareInfo, BusinessTierInfo } from "../components/typ
 // and Pricing.tsx's own comment explains why a missing/stale value here
 // shouldn't be able to take the rest of the page down with it.
 const plans: Record<string, PlanInfo> = {
-  byod: { label: "BYOD", price: 29.99, recurring: true, branches: 1, best_for: "A single counter, testing the waters, or already own a tablet and printer", features: ["1 till", "5 staff accounts", "Inventory", "Basic reports", "Offline first", "Cloud synchronization", "Support"] },
-  standard: { label: "Standard", price: 199.99, recurring: false, branches: 3, best_for: "Growing retail or quick-service shop", features: ["Everything in BYOD", "10\" Android tablet + Bluetooth thermal printer included", "Implementation training included", "Configured, ready to go", "AI Insights", "Task management"] },
-  premium: { label: "Premium", price: 249, recurring: false, branches: null, best_for: "Multi-branch or restaurant group", features: ["Everything in Standard", "12\" Android tablet (upgraded)", "Payroll & HR", "ZIMRA Fiscalisation included", "Priority support", "Ongoing training & implementation planning"] },
+  byod: { label: "BYOD", price: 19.99, recurring: true, branches: 1, best_for: "A single counter, testing the waters, or already own a tablet and printer", features: ["1 till", "5 staff accounts", "Inventory", "Basic reports", "Offline first", "Cloud synchronization", "Support"] },
+  standard: { label: "Standard", price: 199.99, recurring: false, maintenance: 5, branches: 3, best_for: "Growing retail or quick-service shop", features: ["Everything in BYOD", "10\" Android tablet + Bluetooth thermal printer included", "Implementation training included", "Configured, ready to go", "AI Insights", "Task management"] },
+  premium: { label: "Premium", price: 249, recurring: false, maintenance: 5, branches: null, best_for: "Multi-branch or restaurant group", features: ["Everything in Standard", "12\" Android tablet (upgraded)", "Payroll & HR", "ZIMRA Fiscalisation included", "Priority support", "Ongoing training & implementation planning"] },
 };
 const hardware: Record<string, HardwareInfo> = {
   bundle: { label: "Starter bundle (tablet + receipt printer)", price: 120 },

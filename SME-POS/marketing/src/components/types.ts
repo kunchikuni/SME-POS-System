@@ -2,6 +2,8 @@ export interface PlanInfo {
   label: string;
   price: number;
   recurring: boolean;
+  /** Monthly upkeep charged from the second month, for plans bought once. */
+  maintenance?: number;
   branches: number | null;
   best_for: string;
   features: string[];

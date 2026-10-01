@@ -7,7 +7,7 @@ const FAQS = [
   { q: "Can I switch between retail and restaurant mode?", a: "Yes, per branch. One tenant can run a retail shop and a restaurant as two branches, each with its own mode." },
   { q: "Is ZIMRA fiscalisation included?", a: "It's available as an add-on, built against ZIMRA's real FDMS spec. Turn it on when you're ready — it isn't forced on every plan." },
   { q: "Do I need to buy hardware from you?", a: "No. BYOD works with your own Android tablet and printer. Hardware bundles are optional, priced separately, and available on any plan." },
-  { q: "Can I cancel anytime?", a: "BYOD is billed monthly with no lock-in — cancel anytime. Standard and Premium are a one-time payment, not a subscription, so there's nothing recurring to cancel once you've paid." },
+  { q: "Can I cancel anytime?", a: "BYOD is billed monthly with no lock-in — cancel anytime. Standard and Premium are a once-off payment that includes your first month, then a flat $5 maintenance payment each month. Nothing is charged automatically — we remind you by email and text before each payment is due, and paying ahead earns free months (6 months for the price of 5, 12 for the price of 10). If a payment is missed, your dashboard locks, your tills keep selling for two weeks, and then sync pauses (sales stay saved on the device); one $5 payment brings everything back." },
 ];
 
 /** Ported from Home.tsx's FAQ + FaqItem, merged into one island since each
