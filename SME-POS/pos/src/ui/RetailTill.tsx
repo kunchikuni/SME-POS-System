@@ -24,7 +24,7 @@ import type {
     SalePayload,
     StockLevel,
 } from '../types/contract';
-import { SyncBadge, SettingsChangedBanner, ModePill, ThemeToggle, OutboxStuckBanner, SyncedToast, InstallAppButton } from './Shared';
+import { SyncBadge, SettingsChangedBanner, ModePill, ThemeToggle, OutboxStuckBanner, SubscriptionBanner, SyncedToast, InstallAppButton } from './Shared';
 import { Receipt } from './Receipt';
 import { PrinterSettings } from './PrinterSettings';
 import { TasksPanel } from './TasksPanel';
@@ -335,6 +335,7 @@ export function RetailTill({
     return (
         <div className="flex min-h-dvh flex-col pos-bg">
             <OutboxStuckBanner />
+            <SubscriptionBanner />
             <SyncedToast />
             <SettingsChangedBanner />
 

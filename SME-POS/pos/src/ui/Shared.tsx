@@ -193,6 +193,50 @@ export function OutboxStuckBanner() {
 }
 
 /**
+ * Payment notice. In the grace period it is a heads-up (selling AND syncing carry
+ * on) with the date sync will pause. Once the grace period is over the server
+ * pauses sync: the till keeps selling and keeps every sale on the device — this
+ * says so, so a cashier isn't left wondering why nothing is syncing — and offers
+ * a Retry for after the owner has renewed. See sync/subscription.ts.
+ */
+export function SubscriptionBanner() {
+    const status = useSyncStatus();
+    const [dismissed, setDismissed] = useState(false);
+
+    const sub = status?.subscription;
+    if (!sub || sub.state === 'active') return null;
+
+    if (sub.state === 'grace') {
+        if (dismissed) return null;
+        const by = sub.graceEndsAt
+            ? new Date(sub.graceEndsAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+            : null;
+        return (
+            <div role="status" className="flex items-center justify-between gap-3 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-sm text-amber-200 backdrop-blur-sm">
+                <span>Your subscription has ended. Renew{by ? ` by ${by}` : ' soon'} to keep syncing — you can keep selling.</span>
+                <button onClick={() => setDismissed(true)} className="shrink-0 text-amber-400 hover:text-amber-200">Dismiss</button>
+            </div>
+        );
+    }
+
+    const waiting = status?.pending ?? 0;
+    return (
+        <div role="alert" className="flex items-center justify-between gap-3 border-b border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-200 backdrop-blur-sm">
+            <span>
+                Your subscription has ended. Sales are saved on this device{waiting > 0 ? ` (${waiting} waiting)` : ''} and will sync once you renew.
+            </span>
+            <button
+                onClick={() => void syncManager.retryNow()}
+                disabled={status?.syncing}
+                className="shrink-0 font-medium text-red-100 hover:text-white disabled:opacity-50"
+            >
+                {status?.syncing ? 'Checking…' : 'Retry'}
+            </button>
+        </div>
+    );
+}
+
+/**
  * Brief confirmation after a background sync actually clears something out
  * of the outbox — "3 sales synced". Auto-dismisses after 4s, same as
  * OfflineReadyToast: this is passive reassurance for a cashier who's been

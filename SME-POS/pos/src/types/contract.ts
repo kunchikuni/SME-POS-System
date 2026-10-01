@@ -218,6 +218,11 @@ export interface PushResponse {
 export type TenantMode = 'retail' | 'restaurant' | 'hardware' | 'workshop';
 
 export interface SessionResponse {
+    /**
+     * Where the business stands on payment (server: middleware/ensureDeviceSubscribed.ts).
+     * Absent from a server that predates it — treated as active.
+     */
+    subscription?: { state: 'active' | 'grace' | 'lapsed'; graceEndsAt: string | null };
     device: { id: string; name: string };
     /**
      * mode lives here, not on tenant — the authoritative source for what a

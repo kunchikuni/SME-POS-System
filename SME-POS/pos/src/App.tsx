@@ -38,6 +38,7 @@ function AppScreen() {
     const [shift, setShift] = useState<Shift | null>(getShift());
     const [ready, setReady] = useState(false);
     const [bootFailed, setBootFailed] = useState(false);
+    const [bootBlocked, setBootBlocked] = useState(false); // 402: the business's subscription has ended
     const syncStatus = useSyncStatus();
 
     useEffect(() => {
@@ -60,6 +61,8 @@ function AppScreen() {
                 if (err instanceof ApiError && err.status === 401) {
                     clearSession();
                     if (active) setDevice(null);
+                } else if (err instanceof ApiError && err.status === 402) {
+                    if (active) setBootBlocked(true);
                 } else {
                     if (active) setBootFailed(true);
                 }
@@ -90,6 +93,16 @@ function AppScreen() {
     }, [syncStatus?.settingsChanged, shift]);
 
     if (!device) return <PairDevice onPaired={setDevice} />;
+
+    if (bootBlocked && !ready) {
+        return (
+            <Splash
+                title="Subscription ended"
+                subtitle="This business's subscription has ended, so the till can't finish setting up. Renew it in the dashboard (Settings → Payments), then try again."
+                action={{ label: 'Try again', onClick: () => window.location.reload() }}
+            />
+        );
+    }
 
     if (bootFailed && !ready) {
         return (
