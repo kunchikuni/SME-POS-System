@@ -127,10 +127,11 @@ npx prisma db push
 npx prisma db execute --file prisma/post-push.sql
 npx prisma db execute --file prisma/migrations/20260805000001_enable_rls/migration.sql
 npx prisma db execute --file prisma/migrations/20260930000001_enable_rls_customers/migration.sql
+npx prisma db execute --file prisma/migrations/20261002000001_enable_rls_billing_reminders/migration.sql
 ```
 
 - `post-push.sql` adds a partial unique index Prisma's schema can't express.
-- The two RLS files switch on deny-all Row Level Security, so Supabase's
+- The three RLS files switch on deny-all Row Level Security, so Supabase's
   auto-generated public REST API returns nothing for tenant data. The app
   itself is unaffected **if its database role owns the tables or has
   `BYPASSRLS`** (true for the default Supabase `postgres` role). **Verify this
