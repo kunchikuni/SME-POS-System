@@ -4,7 +4,7 @@ import AppLayout from "../../Layouts/AppLayout.js";
 import { usePageTitle, useQuery, useMutation } from "../../lib/hooks.js";
 import { api } from "../../lib/api.js";
 
-interface Category { id: string; name: string; }
+interface Category { id: string; name: string; trackStock: boolean; }
 
 export default function ProductCreate() {
   usePageTitle("Add product");
@@ -26,6 +26,19 @@ export default function ProductCreate() {
     branchId: "", // "" until chosen = the default branch
   });
   const stockBranchId = form.branchId || defaultBranchId;
+  // Picking a category sets whether stock is tracked (off for "Services" and the
+  // like) — until the owner touches the tick box themselves, after which their
+  // choice stands whatever category they pick.
+  const [trackTouched, setTrackTouched] = useState(false);
+
+  function chooseCategory(categoryId: string) {
+    const category = categories.find((c) => c.id === categoryId);
+    setForm((f) => ({
+      ...f,
+      categoryId,
+      ...(category && !trackTouched ? { trackStock: category.trackStock } : {}),
+    }));
+  }
 
   const { submit, loading, errors, error } = useMutation(
     (d: typeof form) => api.products.create({
@@ -79,7 +92,7 @@ export default function ProductCreate() {
             </span>
             <select
               value={form.categoryId}
-              onChange={(e) => setForm(f => ({ ...f, categoryId: e.target.value }))}
+              onChange={(e) => chooseCategory(e.target.value)}
               className="mt-1 w-full rounded-lg border border-hairline bg-surface px-3 py-2 text-sm focus-visible:border-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30"
             >
               <option value="">Uncategorised</option>
@@ -90,14 +103,19 @@ export default function ProductCreate() {
           </label>
         </div>
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={form.trackStock}
-            onChange={(e) => setForm(f => ({ ...f, trackStock: e.target.checked }))}
-          />
-          Track stock for this product
-        </label>
+        <div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.trackStock}
+              onChange={(e) => { setTrackTouched(true); setForm(f => ({ ...f, trackStock: e.target.checked })); }}
+            />
+            Track stock for this product
+          </label>
+          <p className="mt-1 text-xs text-muted">
+            Leave this off for services and labour — there's nothing to count, so it never shows as out of stock.
+          </p>
+        </div>
 
         {form.trackStock && (
           <Field

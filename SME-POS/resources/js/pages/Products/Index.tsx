@@ -43,6 +43,12 @@ export default function ProductsIndex() {
     { onSuccess: () => { showFlash("Product deleted."); refetch(); } },
   );
 
+  // A service added with "Track stock" left on: stop counting it (or start, for a part).
+  const { submit: setTracking } = useMutation(
+    ({ id, trackStock }: { id: string; trackStock: boolean }) => api.products.setTracking(id, trackStock),
+    { onSuccess: (r) => { showFlash(r?.message ?? "Saved."); refetch(); } },
+  );
+
   const { submit: restock } = useMutation(
     ({ id, qty, branchId }: { id: string; qty: number; branchId?: string }) =>
       api.products.restock(id, qty, branchId || undefined),
@@ -177,9 +183,13 @@ export default function ProductsIndex() {
                     <td className="px-4 py-3 text-muted">{p.category ?? "—"}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(p.priceCents)}</td>
                     <td className="px-4 py-3 text-right">
-                      <span className={`tabular-nums font-semibold ${p.lowStock ? "text-red-600" : "text-ink"}`}>
-                        {p.onHand}
-                      </span>
+                      {p.tracked ? (
+                        <span className={`tabular-nums font-semibold ${p.lowStock ? "text-red-600" : "text-ink"}`}>
+                          {p.onHand}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted" title="Stock isn't counted for this product (a service, for example)">Not tracked</span>
+                      )}
                       {/* All-branches view: show where the stock actually is,
                           so a total can't hide one branch running out. */}
                       {multiBranch && !branchFilter && p.tracked && p.byBranch.length > 0 && (
@@ -203,6 +213,16 @@ export default function ProductsIndex() {
                             className="rounded-lg border border-hairline px-2 py-1 text-xs hover:bg-canvas"
                           >Count</button>
                         )}
+                        <button
+                          onClick={() => {
+                            if (!p.tracked) { setTracking({ id: p.id, trackStock: true }); return; }
+                            if (confirm(`Stop counting stock for ${p.name}? Use this for services — it will no longer show as in or out of stock.`)) {
+                              setTracking({ id: p.id, trackStock: false });
+                            }
+                          }}
+                          title={p.tracked ? "It's a service — there's nothing to count" : "Start counting stock for this product"}
+                          className="rounded-lg border border-hairline px-2 py-1 text-xs hover:bg-canvas"
+                        >{p.tracked ? "Stop tracking" : "Track stock"}</button>
                         <button
                           onClick={() => { if (confirm(`Delete ${p.name}?`)) deleteProduct(p.id); }}
                           className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
