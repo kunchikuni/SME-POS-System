@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '../lib/db.js';
 import type { HonoVars } from '../lib/context.js';
 import { branchKind } from '../domain/businessTypes.js';
+import { accessState } from '../domain/billing/entitlementService.js';
 export const posRoutes = new Hono<{ Variables: HonoVars }>();
 
 // GET /pos/session — device session info for the till
@@ -17,7 +18,12 @@ posRoutes.get('/session', async (ctx) => {
     select: { verifiedAt: true, taxpayerTin: true, vatNumber: true },
   });
 
+  // Where this business stands on payment — the till shows a banner from it (and
+  // pauses sync once 'lapsed'; see middleware/ensureDeviceSubscribed.ts).
+  const access = accessState(tenant as any);
+
   return ctx.json({
+    subscription: { state: access.state, graceEndsAt: access.graceEndsAt?.toISOString() ?? null },
     device: { id: device.id, name: device.name },
     tenant: {
       name: tenant.name,

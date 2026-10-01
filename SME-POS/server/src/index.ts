@@ -51,6 +51,7 @@ import { resolveTenant } from './middleware/resolveTenant.js';
 import { requireAuth, requireGuest } from './middleware/auth.js';
 import { resolveDevice } from './middleware/resolveDevice.js';
 import { ensureSubscribed } from './middleware/ensureSubscribed.js';
+import { ensureDeviceSubscribed } from './middleware/ensureDeviceSubscribed.js';
 import { requireFeature } from './middleware/requireFeature.js';
 
 // ── Route modules ─────────────────────────────────────────────────────────────
@@ -293,6 +294,12 @@ app.use('/pos/session', resolveDevice);
 app.use('/pos/tasks', resolveDevice);
 app.use('/pos/tasks/*', resolveDevice);
 app.use('/sync/*', resolveDevice);
+// Payment gate for the till: after the grace period, sync and tasks answer 402
+// (the till keeps selling offline). /pos/session stays open — it reports the state.
+// Registered AFTER resolveDevice on the same paths, so the tenant is known.
+app.use('/pos/tasks', ensureDeviceSubscribed);
+app.use('/pos/tasks/*', ensureDeviceSubscribed);
+app.use('/sync/*', ensureDeviceSubscribed);
 const posApi = new Hono<{ Variables: HonoVars }>();
 posApi.route('/sync', syncRoutes);
 posApi.route('/pos', posRoutes);

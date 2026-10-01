@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Replace only the network layer; keep the real error classes for instanceof.
 vi.mock('../sync/apiClient', async (importOriginal) => {
@@ -16,8 +16,9 @@ vi.mock('../sync/apiClient', async (importOriginal) => {
 
 import { api, ApiError, OfflineError } from '../sync/apiClient';
 import { db, getCursor, setCursor } from '../db/database';
-import { ack, enqueue, pending } from '../sync/outbox';
+import { ack, enqueue, pending, pendingStuck } from '../sync/outbox';
 import { syncManager } from '../sync/syncManager';
+import { ACTIVE_SUBSCRIPTION, loadSubscription } from '../sync/subscription';
 import { getSession, saveSession } from '../sync/session';
 import { completeSale, CreditCustomerRequiredError, InsufficientStockError } from '../pos/checkout';
 import { buildSaleMutation, addProduct, emptyCart, setQty } from '../pos/cart';
@@ -432,5 +433,106 @@ describe('syncManager.sync — tenant info refresh', () => {
         await expect(syncManager.sync()).resolves.toBeUndefined();
         // pull() still ran and the cursor still advanced despite session refresh failing.
         expect(await getCursor()).toBe('t0');
+    });
+});
+
+/**
+ * A business whose trial/subscription has run out is answered 402 by the server
+ * once its grace period is over. That must PAUSE sync — nothing more: the sales
+ * stay on the till, are not counted as failed (which would march them towards
+ * "stuck, contact support"), and all go out the moment the business renews.
+ */
+describe('syncManager.sync — paused for payment (402)', () => {
+    const opts = { cashierId: null, currency: 'USD', payments: [], tenantRateBps: 0 };
+    const paused = () => new ApiError(402, { code: 'subscription_required' });
+    const session = () => ({
+        device: { id: 'd1', name: 'Till 1' },
+        branch: { id: 'b1', name: 'Main', mode: 'retail' as const, address: null, phone: null },
+        tenant: {
+            name: 'Demo Store', theme: {}, currency: 'USD', taxRateBps: 1500,
+            fiscal: { verified: false, taxpayerTin: null, vatNumber: null },
+        },
+    });
+    const subscription = () => {
+        let seen = ACTIVE_SUBSCRIPTION;
+        syncManager.subscribe((s) => { seen = s.subscription; })();
+        return seen;
+    };
+    const queueOneSale = async () => {
+        const sale = buildSaleMutation(addProduct(emptyCart(), product()), opts);
+        await enqueue(sale.sale.id, sale);
+        return sale;
+    };
+
+    beforeEach(async () => {
+        syncManager.setSubscription(ACTIVE_SUBSCRIPTION);
+        await setCursor('t0');
+        vi.mocked(api.pull).mockResolvedValue({
+            cursor: 't0', categories: [], products: [], stock: [], tables: [], staff: [], customers: [],
+        });
+        vi.mocked(api.session).mockResolvedValue(session());
+    });
+    afterEach(() => syncManager.setSubscription(ACTIVE_SUBSCRIPTION));
+
+    it('pauses sync without counting the queued sales as failed', async () => {
+        await queueOneSale();
+        vi.mocked(api.push).mockRejectedValue(paused());
+
+        await syncManager.sync();
+
+        const [entry] = await pending();
+        expect(entry.attempts).toBe(0);
+        expect(await pendingStuck()).toHaveLength(0);
+        expect(subscription().state).toBe('lapsed');
+    });
+
+    it('remembers the pause, so the notice is still there after a reload', async () => {
+        await queueOneSale();
+        vi.mocked(api.push).mockRejectedValue(paused());
+
+        await syncManager.sync();
+
+        expect(loadSubscription().state).toBe('lapsed');
+    });
+
+    it('does not hit the server on every poll while paused — but Retry does', async () => {
+        await queueOneSale();
+        vi.mocked(api.push).mockRejectedValue(paused());
+
+        await syncManager.sync();
+        expect(api.push).toHaveBeenCalledTimes(1);
+
+        await syncManager.sync(); // the 30s background poll
+        expect(api.push).toHaveBeenCalledTimes(1);
+
+        await syncManager.retryNow(); // the cashier taps Retry
+        expect(api.push).toHaveBeenCalledTimes(2);
+    });
+
+    it('delivers everything and clears the notice once the business has renewed', async () => {
+        const sale = await queueOneSale();
+        vi.mocked(api.push).mockRejectedValue(paused());
+        await syncManager.sync();
+        expect(subscription().state).toBe('lapsed');
+
+        vi.mocked(api.push).mockResolvedValue({ acked: [sale.sale.id], cursor: 't1' });
+        vi.mocked(api.session).mockResolvedValue({ ...session(), subscription: { state: 'active', graceEndsAt: null } });
+        await syncManager.retryNow();
+
+        expect(await pending()).toHaveLength(0);
+        expect(subscription().state).toBe('active');
+        expect(loadSubscription().state).toBe('active');
+    });
+
+    it('shows the grace period the server reports, without pausing anything', async () => {
+        const sale = await queueOneSale();
+        const ends = '2026-10-20T12:00:00.000Z';
+        vi.mocked(api.push).mockResolvedValue({ acked: [sale.sale.id], cursor: 't1' });
+        vi.mocked(api.session).mockResolvedValue({ ...session(), subscription: { state: 'grace', graceEndsAt: ends } });
+
+        await syncManager.sync();
+
+        expect(await pending()).toHaveLength(0); // still syncing during grace
+        expect(subscription()).toEqual({ state: 'grace', graceEndsAt: ends });
     });
 });

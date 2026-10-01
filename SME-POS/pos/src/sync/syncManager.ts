@@ -1,4 +1,5 @@
 import { api, ApiError, OfflineError } from './apiClient';
+import { ACTIVE_SUBSCRIPTION, loadSubscription, saveSubscription, type SubscriptionState } from './subscription';
 import { ack, markAttempt, pendingCount, pendingRetryable, pendingStuck, resetBackoff } from './outbox';
 import { mergeSessionInfo } from './session';
 import { db, getCursor, setCursor, type OutboxEntry } from '../db/database';
@@ -68,6 +69,12 @@ export interface SyncStatus {
      * since "N sales synced" is reassurance, not something needing action.
      */
     lastSyncBatch: { count: number; at: string } | null;
+    /**
+     * Where the business stands on payment. 'lapsed' means the server has paused
+     * sync (402): sales are still rung up and kept on this device, and nothing is
+     * counted as failed. See subscription.ts and the SubscriptionBanner (Shared.tsx).
+     */
+    subscription: SubscriptionState;
 }
 
 type Listener = (status: SyncStatus) => void;
@@ -80,6 +87,9 @@ type Listener = (status: SyncStatus) => void;
  */
 const CURSOR_CATCH_UP_KEY = 'cursorCatchUpV2';
 
+/** While sync is paused for payment, look again this often (or straight away on "Retry"). */
+const LAPSED_RECHECK_MS = 5 * 60_000;
+
 export class SyncManager {
     private status: SyncStatus = {
         online: navigator.onLine,
@@ -90,7 +100,11 @@ export class SyncManager {
         settingsChanged: false,
         outboxStuck: false,
         lastSyncBatch: null,
+        subscription: loadSubscription(),
     };
+
+    /** Earliest time an automatic sync may try again while paused for payment. */
+    private lapsedRetryAt = 0;
 
     private listeners = new Set<Listener>();
     private pollHandle: number | null = null;
@@ -106,6 +120,14 @@ export class SyncManager {
     private emit(patch: Partial<SyncStatus>): void {
         this.status = { ...this.status, ...patch };
         for (const listener of this.listeners) listener(this.status);
+    }
+
+    /** Record where the business stands on payment (and remember it across reloads). */
+    setSubscription(next: SubscriptionState): void {
+        const current = this.status.subscription;
+        if (current.state === next.state && current.graceEndsAt === next.graceEndsAt) return;
+        saveSubscription(next);
+        this.emit({ subscription: next });
     }
 
     private async refreshPending(): Promise<void> {
@@ -176,8 +198,11 @@ export class SyncManager {
      * Push then pull. Push first so the server has our sales before we ask what
      * changed; both steps tolerate being offline and simply defer.
      */
-    async sync(): Promise<void> {
+    async sync(force = false): Promise<void> {
         if (this.status.syncing) return;
+        // Paused for payment: don't hit the server on every 30s poll — look again every
+        // few minutes, or straight away when the cashier taps Retry (force).
+        if (!force && this.status.subscription.state === 'lapsed' && Date.now() < this.lapsedRetryAt) return;
         this.emit({ syncing: true });
         try {
             await this.flush();
@@ -196,7 +221,7 @@ export class SyncManager {
     async retryNow(): Promise<void> {
         await resetBackoff();
         await this.refreshPending();
-        await this.sync();
+        await this.sync(true);
     }
 
     /**
@@ -208,7 +233,9 @@ export class SyncManager {
      */
     private async refreshTenantInfo(): Promise<void> {
         try {
-            const { tenant, branch } = await api.session();
+            const { tenant, branch, subscription } = await api.session();
+            // A sync that got this far means payment isn't blocking it; the server says which side of the grace period we're on.
+            this.setSubscription(subscription ?? ACTIVE_SUBSCRIPTION);
             if (mergeSessionInfo(tenant, branch)) {
                 this.emit({ settingsChanged: true });
             }
@@ -370,6 +397,13 @@ export class SyncManager {
             this.emit({ online: false });
             return;
         }
+        if (error instanceof ApiError && error.status === 402) {
+            // Paused for payment. Nothing is wrong with the sales: they stay queued on
+            // this device and go out once the business renews.
+            this.lapsedRetryAt = Date.now() + LAPSED_RECHECK_MS;
+            this.setSubscription({ state: 'lapsed', graceEndsAt: this.status.subscription.graceEndsAt });
+            return;
+        }
         if (error instanceof ApiError && error.status === 401) {
             this.emit({ needsReauth: true });
         }
@@ -412,7 +446,8 @@ export function pendingEffects(entries: OutboxEntry[]): {
 function isEntryAttributable(error: unknown): boolean {
     if (!(error instanceof ApiError)) return true;
     if (error.status < 400 || error.status >= 500) return false;
-    return ![401, 403, 408, 429].includes(error.status);
+    // 402 = the business hasn't paid: says nothing about any single sale, exactly like an auth error.
+    return ![401, 402, 403, 408, 429].includes(error.status);
 }
 
 function describe(error: unknown): string {

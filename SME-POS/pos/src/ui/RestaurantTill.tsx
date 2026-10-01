@@ -24,7 +24,7 @@ import type {
     StockLevel,
     Table,
 } from '../types/contract';
-import { SyncBadge, SettingsChangedBanner, ModePill, ThemeToggle, OutboxStuckBanner, SyncedToast, InstallAppButton } from './Shared';
+import { SyncBadge, SettingsChangedBanner, ModePill, ThemeToggle, OutboxStuckBanner, SubscriptionBanner, SyncedToast, InstallAppButton } from './Shared';
 import { Checkout } from './Checkout';
 import { ReceiveStock } from './ReceiveStock';
 import { RecordPayment } from './RecordPayment';
@@ -186,6 +186,7 @@ export function RestaurantTill({
         return (
             <div className="min-h-dvh flex flex-col resto-floor-bg">
                 <OutboxStuckBanner />
+                <SubscriptionBanner />
                 <SyncedToast />
                 <SettingsChangedBanner />
                 <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-4 border-b border-white/6">
@@ -368,6 +369,7 @@ export function RestaurantTill({
     return (
         <div className="flex min-h-dvh flex-col resto-floor-bg">
             <OutboxStuckBanner />
+            <SubscriptionBanner />
             <SyncedToast />
             <SettingsChangedBanner />
 

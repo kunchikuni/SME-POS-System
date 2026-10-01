@@ -26,7 +26,7 @@ const PLANS: Record<string, { features: string[]; branches: number | null }> = {
     branches: 1,
   },
   standard: {
-    features: ['Unlimited products', 'Offline POS', 'Multiple branches', 'Analytics'],
+    features: ['Unlimited products', 'Offline POS', 'Multiple branches', 'Analytics', 'AI insights'],
     branches: 3,
   },
   pro: {
@@ -76,10 +76,41 @@ export function hasAccess(tenant: TenantForEntitlement): boolean {
   return activeSubscription(tenant) !== null;
 }
 
+/**
+ * How long a till keeps syncing after the trial or subscription runs out. The
+ * dashboard locks at once (it is where the owner pays), but a till is on a
+ * counter with customers at it — and the owner may simply not have seen the
+ * reminder yet — so it gets a short runway before sync pauses.
+ */
+export const DEVICE_GRACE_DAYS = 3;
+
+export type AccessState = {
+  /** active = paid or on trial · grace = just ended, tills still sync · lapsed = tills paused */
+  state: 'active' | 'grace' | 'lapsed';
+  /** When the grace period ends (or ended). null when there was no end date to count from. */
+  graceEndsAt: Date | null;
+};
+
+/** When did the tenant's trial or paid period end? null = no end date on record. */
+function accessEndedAt(tenant: TenantForEntitlement): Date | null {
+  if (tenant.plan === 'trial') return tenant.trialEndsAt ? new Date(tenant.trialEndsAt) : null;
+  // The caller loads the latest status='active' subscription; a lapsed monthly one keeps its past end date.
+  return tenant.subscription?.currentPeriodEnd ? new Date(tenant.subscription.currentPeriodEnd) : null;
+}
+
+/** Where a tenant stands for the TILL: fully active, in its grace period, or paused. */
+export function accessState(tenant: TenantForEntitlement, now: Date = new Date()): AccessState {
+  if (hasAccess(tenant)) return { state: 'active', graceEndsAt: null };
+  const ended = accessEndedAt(tenant);
+  if (!ended) return { state: 'lapsed', graceEndsAt: null };
+  const graceEndsAt = new Date(ended.getTime() + DEVICE_GRACE_DAYS * 24 * 60 * 60 * 1000);
+  return { state: graceEndsAt > now ? 'grace' : 'lapsed', graceEndsAt };
+}
+
 /** Effective plan key for feature/limit checks */
 export function planKey(tenant: TenantForEntitlement): string {
-  const sub = activeSubscription(tenant);
-  return sub ? tenant.plan : 'premium'; // trial → premium-equivalent
+  if (isOnTrial(tenant)) return 'premium';
+  return tenant.plan;
 }
 
 /** Does the tenant's plan include a named feature? */
