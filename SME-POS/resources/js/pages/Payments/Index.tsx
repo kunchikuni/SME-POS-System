@@ -12,7 +12,7 @@ type BillingData = Awaited<ReturnType<typeof api.billing.get>>;
 // Display-only: hardware isn't charged through this page (see below).
 const HARDWARE: Record<string, { label: string; price: number }> = {
   bundle: { label: "Starter bundle (tablet + receipt printer)", price: 120 },
-  printer: { label: "Thermal receipt printer only", price: 40 },
+  printer: { label: "Thermal receipt printer only", price: 30 },
 };
 
 /** Identifies the paid period on record: changes when a payment lands (a new paid row, or a later end date). */
