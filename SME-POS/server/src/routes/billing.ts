@@ -71,7 +71,7 @@ const PLAN_DISPLAY: Record<string, { label: string; branches: number | null; fea
     features: ['1 till', '5 staff accounts', 'Inventory', 'Basic reports', 'Offline first', 'Cloud synchronization', 'Support'],
   },
   standard: {
-    label: 'Standard', branches: 3,
+    label: 'Standard', branches: 5,
     features: ['Everything in BYOD', '10" Android tablet + Bluetooth thermal printer included', 'Implementation training included', 'AI Insights', 'Task management'],
   },
   premium: {

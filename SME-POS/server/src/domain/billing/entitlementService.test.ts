@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
 import {
-  DEVICE_GRACE_DAYS, MAINTENANCE_GRACE_DAYS, accessState, accessSummary, deviceGraceDays, hasAccess, hasFeature, planKey,
-  type TenantForEntitlement,
+  DEVICE_GRACE_DAYS, MAINTENANCE_GRACE_DAYS, accessState, accessSummary, branchLimit, canAddBranch, deviceGraceDays, hasAccess,
+  hasFeature, planKey, type TenantForEntitlement,
 } from './entitlementService.js';
 import { ensureDeviceSubscribed } from '../../middleware/ensureDeviceSubscribed.js';
 import { ensureSubscribed } from '../../middleware/ensureSubscribed.js';
@@ -39,6 +39,39 @@ describe('plan features', () => {
     expect(hasFeature(trial(-1), 'payroll')).toBe(false);
     expect(planKey(trial(-1))).toBe('trial'); // not 'premium'
     expect(planKey(trial(3))).toBe('premium');
+  });
+});
+
+describe('branch limits', () => {
+  it('BYOD has 1, Standard has 5, Premium and a running trial have no limit', () => {
+    expect(branchLimit(paid('byod', 20))).toBe(1);
+    expect(branchLimit(paid('standard', 20))).toBe(5);
+    expect(branchLimit(paid('premium', 20))).toBeNull();
+    expect(branchLimit(trial(3))).toBeNull();
+  });
+
+  it('lets a Standard business open its fifth branch but not a sixth', () => {
+    const standard = paid('standard', 20);
+    expect(canAddBranch(standard, 4)).toBe(true);  // adding the 5th
+    expect(canAddBranch(standard, 5)).toBe(false); // the 6th
+  });
+
+  it('does not turn Premium\'s "unlimited" into one branch', () => {
+    const premium = paid('premium', 20);
+    expect(canAddBranch(premium, 1)).toBe(true);
+    expect(canAddBranch(premium, 50)).toBe(true);
+    expect(branchLimit(paid('pro', 20))).toBeNull(); // the old name for Premium
+  });
+
+  it('gives a plan it does not know, or a finished trial, a single branch', () => {
+    expect(branchLimit(paid('enterprise', 20))).toBe(1);
+    expect(branchLimit(paid('constructor', 20))).toBe(1);
+    expect(branchLimit(trial(-5))).toBe(1);
+  });
+
+  it('keeps BYOD to its one branch', () => {
+    expect(canAddBranch(paid('byod', 20), 0)).toBe(true);
+    expect(canAddBranch(paid('byod', 20), 1)).toBe(false);
   });
 });
 

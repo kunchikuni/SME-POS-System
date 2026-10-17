@@ -51,6 +51,7 @@ vi.mock('../lib/paynow.js', () => ({
 }));
 
 const { billingRoutes, billingWebhookRoutes } = await import('./billing.js');
+const { branchLimit } = await import('../domain/billing/entitlementService.js');
 
 const DAY = 86_400_000;
 const NOW = new Date('2026-10-01T12:00:00.000Z');
@@ -335,6 +336,19 @@ describe('BYOD', () => {
 
 describe('GET /billing/payments', () => {
   const get = async (app: Hono) => (await app.request('/billing/payments')).json() as Promise<any>;
+
+  it("shows each plan's branch count exactly as the server enforces it — the two tables cannot drift", async () => {
+    const { plans } = await get(appFor());
+    expect(plans.length).toBeGreaterThan(0);
+    for (const p of plans) {
+      const enforced = branchLimit({
+        plan: p.key, trialEndsAt: null,
+        subscription: { status: 'active', zimraAddon: false, currentPeriodEnd: at(20) },
+      });
+      expect(p.branches, p.key).toBe(enforced);
+    }
+    expect(Object.fromEntries(plans.map((p: any) => [p.key, p.branches]))).toEqual({ byod: 1, standard: 5, premium: null });
+  });
 
   it('lists the ways to pay ahead, with the months actually charged for each', async () => {
     const { prepay } = await get(appFor());

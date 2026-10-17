@@ -30,7 +30,7 @@ const PLANS: Record<string, { features: string[]; branches: number | null }> = {
   },
   standard: {
     features: ['Unlimited products', 'Offline POS', 'Multiple branches', 'Analytics', 'AI insights'],
-    branches: 3,
+    branches: 5,
   },
   pro: {
     features: [
@@ -200,10 +200,19 @@ export function hasFeature(tenant: TenantForEntitlement, feature: string, now: D
   );
 }
 
-/** null = unlimited */
+/**
+ * How many branches the tenant may have; null = unlimited.
+ *
+ * A plan's own `null` means unlimited (Premium) and must stay null. A plan
+ * this table doesn't know (a finished trial, a typo) gets 1. The two used to be
+ * confused by `?? 1`, which turned Premium's "unlimited" into a single branch:
+ * a Premium business was refused its second branch while its plan card promised
+ * "Unlimited branches".
+ */
 export function branchLimit(tenant: TenantForEntitlement): number | null {
   if (isOnTrial(tenant)) return null;
-  return PLANS[planKey(tenant)]?.branches ?? 1;
+  const key = planKey(tenant);
+  return Object.hasOwn(PLANS, key) ? PLANS[key].branches : 1;
 }
 
 export function canAddBranch(tenant: TenantForEntitlement, currentCount: number): boolean {
