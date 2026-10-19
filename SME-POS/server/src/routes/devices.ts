@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db } from '../lib/db.js';
+import { canAddTill, planLimitRefusal } from '../domain/billing/entitlementService.js';
 import type { HonoVars } from '../lib/context.js';
 export const deviceRoutes = new Hono<{ Variables: HonoVars }>();
 
@@ -21,6 +22,11 @@ deviceRoutes.post('/', async (ctx) => {
   const d = z.object({ name: z.string().min(1), branchId: z.string().uuid() }).parse(await ctx.req.json());
   const branch = await db.branch.findFirst({ where: { id: d.branchId, tenantId: t.id, deletedAt: null } });
   if (!branch) return ctx.json({ message: 'Branch not found.' }, 404);
+
+  // The plan's till limit is per branch. Tills already paired keep working if a
+  // business is over (it downgraded, say) -- this only stops adding more.
+  const inBranch = await db.device.count({ where: { tenantId: t.id, branchId: d.branchId, deletedAt: null } });
+  if (!canAddTill(t, inBranch)) return ctx.json(planLimitRefusal(t, 'tills'), 403);
 
   // Generate a random bearer token — revealed once, never stored plaintext
   const token = crypto.randomBytes(32).toString('hex');

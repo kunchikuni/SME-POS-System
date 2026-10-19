@@ -172,7 +172,10 @@ model User {
   payrollRunsBy     PayrollRun[] @relation("RunBy")
   payslips          Payslip[]
 
-  @@unique([tenantId, email])
+  // No @@unique([tenantId, email]) here on purpose: till-only staff (cashiers, waiters) have
+  // no email -- it is stored as '' -- so a plain unique let a business have exactly ONE of
+  // them and 500'd on the second. Email is unique per business only when there is one: a
+  // partial index, which Prisma can't express, in prisma/post-push.sql.
   @@index([tenantId])
   @@map("users")
 }

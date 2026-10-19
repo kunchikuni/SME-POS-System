@@ -22,15 +22,30 @@ export type TenantForEntitlement = {
   } | null;
 };
 
-/** Plan feature config — mirrors config/paynow.php plans array */
-const PLANS: Record<string, { features: string[]; branches: number | null }> = {
+/**
+ * What each plan includes and how much of it. A limit of `null` means
+ * unlimited. The numbers are what the dashboard's plan cards and the marketing
+ * page quote, and what the routes enforce (branches, tills, staff) -- one table,
+ * so the promise and the check can't disagree.
+ *
+ *   branches        how many branches the business may have
+ *   tillsPerBranch  how many tills (paired devices) in each branch
+ *   staff           staff accounts besides the owner
+ */
+type PlanDef = { features: string[]; branches: number | null; tillsPerBranch: number | null; staff: number | null };
+
+const PLANS: Record<string, PlanDef> = {
   byod: {
     features: ['Unlimited products', 'Offline POS'],
     branches: 1,
+    tillsPerBranch: 1,
+    staff: 5,
   },
   standard: {
     features: ['Unlimited products', 'Offline POS', 'Multiple branches', 'Analytics', 'AI insights'],
     branches: 5,
+    tillsPerBranch: 2,
+    staff: 15,
   },
   pro: {
     features: [
@@ -43,6 +58,8 @@ const PLANS: Record<string, { features: string[]; branches: number | null }> = {
       'Fiscalisation',
     ],
     branches: null, // unlimited
+    tillsPerBranch: null,
+    staff: null,
   },
   premium: {
     features: [
@@ -55,6 +72,8 @@ const PLANS: Record<string, { features: string[]; branches: number | null }> = {
       'Fiscalisation',
     ],
     branches: null,
+    tillsPerBranch: null,
+    staff: null,
   },
 };
 
@@ -200,22 +219,64 @@ export function hasFeature(tenant: TenantForEntitlement, feature: string, now: D
   );
 }
 
-/**
- * How many branches the tenant may have; null = unlimited.
- *
- * A plan's own `null` means unlimited (Premium) and must stay null. A plan
- * this table doesn't know (a finished trial, a typo) gets 1. The two used to be
- * confused by `?? 1`, which turned Premium's "unlimited" into a single branch:
- * a Premium business was refused its second branch while its plan card promised
- * "Unlimited branches".
- */
-export function branchLimit(tenant: TenantForEntitlement): number | null {
-  if (isOnTrial(tenant)) return null;
-  const key = planKey(tenant);
-  return Object.hasOwn(PLANS, key) ? PLANS[key].branches : 1;
+export type PlanLimits = Pick<PlanDef, 'branches' | 'tillsPerBranch' | 'staff'>;
+
+/** What a plan allows, by plan key — for showing on a plan card. A plan this table doesn't know gets BYOD's. */
+export function planLimits(plan: string): PlanLimits {
+  const { branches, tillsPerBranch, staff } = Object.hasOwn(PLANS, plan) ? PLANS[plan] : PLANS.byod;
+  return { branches, tillsPerBranch, staff };
 }
+
+/**
+ * What THIS tenant may have right now; null = unlimited. A running free trial
+ * has everything. Otherwise it is the plan's own figure.
+ *
+ * A plan's own `null` means unlimited (Premium) and must stay null. A plan the
+ * table doesn't know (a finished trial, a typo) gets BYOD's -- the smallest. The
+ * two used to be confused by `?? 1`, which turned Premium's "unlimited" into a
+ * single branch: a Premium business was refused its second branch while its plan
+ * card promised "Unlimited branches".
+ */
+export function limitFor(tenant: TenantForEntitlement, what: keyof PlanLimits, now: Date = new Date()): number | null {
+  if (isOnTrial(tenant, now)) return null;
+  return planLimits(planKey(tenant, now))[what];
+}
+
+/** null = unlimited */
+export const branchLimit = (tenant: TenantForEntitlement) => limitFor(tenant, 'branches');
+/** Tills allowed in EACH branch. */
+export const tillLimit = (tenant: TenantForEntitlement) => limitFor(tenant, 'tillsPerBranch');
+/** Staff accounts allowed besides the owner. */
+export const staffLimit = (tenant: TenantForEntitlement) => limitFor(tenant, 'staff');
 
 export function canAddBranch(tenant: TenantForEntitlement, currentCount: number): boolean {
   const limit = branchLimit(tenant);
   return limit === null || currentCount < limit;
+}
+
+/** Can another till be paired in a branch that already has `tillsInBranch`? */
+export function canAddTill(tenant: TenantForEntitlement, tillsInBranch: number): boolean {
+  const limit = tillLimit(tenant);
+  return limit === null || tillsInBranch < limit;
+}
+
+/**
+ * Can another staff account be added? `activeAccounts` is EVERY active login
+ * including the owner, and one of them is the owner -- so staff = accounts - 1.
+ * Counting this way (not "everyone but role = owner") means a second "owner"
+ * can't be used to get round the cap.
+ */
+export function canAddStaff(tenant: TenantForEntitlement, activeAccounts: number): boolean {
+  const limit = staffLimit(tenant);
+  return limit === null || Math.max(0, activeAccounts - 1) < limit;
+}
+
+/** The refusal an over-limit request gets: a stable code, which limit, and what to do. */
+export function planLimitRefusal(tenant: TenantForEntitlement, what: 'tills' | 'staff') {
+  const limit = what === 'tills' ? tillLimit(tenant) : staffLimit(tenant);
+  const message =
+    what === 'tills'
+      ? `Your plan allows ${limit} till${limit === 1 ? '' : 's'} per branch. Choose a bigger plan in Settings > Payments to add more.`
+      : `Your plan allows ${limit} staff account${limit === 1 ? '' : 's'} besides the owner. Choose a bigger plan in Settings > Payments to add more.`;
+  return { message, code: 'plan_limit_reached' as const, limit: what, allowed: limit };
 }

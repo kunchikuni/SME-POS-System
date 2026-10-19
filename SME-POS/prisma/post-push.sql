@@ -9,3 +9,10 @@
 CREATE UNIQUE INDEX IF NOT EXISTS "void_requests_one_pending_per_sale"
   ON "void_requests"("sale_id")
   WHERE "status" = 'pending';
+
+-- An account's email is unique within its business -- when it has one. Till-only
+-- staff (cashiers, waiters) have none, stored as '', and there can be many of those.
+-- (A plain @@unique on the column let a business have exactly one such account.)
+CREATE UNIQUE INDEX IF NOT EXISTS "users_tenant_id_email_key"
+  ON "users"("tenant_id", "email")
+  WHERE "email" <> '';

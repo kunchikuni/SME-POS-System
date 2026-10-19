@@ -13,6 +13,7 @@
 import { Hono } from 'hono';
 import crypto from 'node:crypto';
 import { db } from '../lib/db.js';
+import { canAddTill, planLimitRefusal } from '../domain/billing/entitlementService.js';
 import type { HonoVars } from '../lib/context.js';
 import { businessTypeFor } from '../domain/businessTypes.js';
 import { addStarters, missingStarters } from '../domain/catalogue.js';
@@ -79,6 +80,11 @@ onboardingRoutes.post('/till', async (ctx) => {
     select: { id: true, name: true },
   });
   if (!branch) return ctx.json({ message: 'No branch found.' }, 422);
+
+  // This route makes a NEW till every time it is called ("Set up another till here"), so it
+  // is held to the plan's till limit exactly as POST /devices is -- otherwise it was a way round it.
+  const inBranch = await db.device.count({ where: { tenantId: t.id, branchId: branch.id, deletedAt: null } });
+  if (!canAddTill(t, inBranch)) return ctx.json(planLimitRefusal(t, 'tills'), 403);
 
   const count = await db.device.count({ where: { tenantId: t.id, deletedAt: null } });
   // Same token scheme as POST /devices: random, returned once, stored only hashed.

@@ -130,7 +130,8 @@ npx prisma db execute --file prisma/migrations/20260930000001_enable_rls_custome
 npx prisma db execute --file prisma/migrations/20261002000001_enable_rls_billing_reminders/migration.sql
 ```
 
-- `post-push.sql` adds a partial unique index Prisma's schema can't express.
+- `post-push.sql` adds the partial unique indexes Prisma's schema can't express (one pending void
+  per sale; a login email unique within a business only where there is one — till-only staff have none).
 - The three RLS files switch on deny-all Row Level Security, so Supabase's
   auto-generated public REST API returns nothing for tenant data. The app
   itself is unaffected **if its database role owns the tables or has
@@ -186,6 +187,9 @@ local gateways, so budget for it (or add an adapter in `server/src/lib/sms.ts`).
 The job records each reminder in a `billing_reminders` table, and texts need
 `users.phone`. A new database gets both from `prisma db push`; an existing one needs
 `npx prisma db execute --file prisma/migrations/20261001000001_billing_reminders/migration.sql`.
+An existing database also needs `prisma/migrations/20261019000001_users_email_partial_unique/migration.sql`:
+until then a business can add only one till-only staff account (the second fails on the old plain unique
+index on login email).
 
 ## What is and isn't verified
 

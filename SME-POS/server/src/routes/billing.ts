@@ -39,7 +39,7 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db } from '../lib/db.js';
 import { initiateTransaction, verifyHash, isPaidStatus, PaynowNotConfiguredError } from '../lib/paynow.js';
-import { accessSummary } from '../domain/billing/entitlementService.js';
+import { accessSummary, planLimits } from '../domain/billing/entitlementService.js';
 import {
   PREPAY_OPTIONS, billedMonths, freeMonths, maintenanceFeeCents, monthsFromReference, nextPeriodEnd, paysMaintenance,
 } from '../domain/billing/maintenance.js';
@@ -65,18 +65,30 @@ const monthsSchema = z
  * failed at payment.) Feature wording mirrors the marketing page; branch
  * limits mirror entitlementService.ts.
  */
+/**
+ * The till and staff lines of a plan card, worked out from the limits the routes
+ * enforce (entitlementService.ts PLANS) so the card can't promise what the
+ * server won't allow.
+ */
+function limitLines(plan: string): string[] {
+  const { branches, tillsPerBranch, staff } = planLimits(plan);
+  if (tillsPerBranch === null && staff === null) return ['Unlimited tills and staff accounts'];
+  const tills = tillsPerBranch === 1 && branches === 1 ? '1 till' : `Up to ${tillsPerBranch} tills per branch`;
+  return [tills, `${staff} staff accounts`];
+}
+
 const PLAN_DISPLAY: Record<string, { label: string; branches: number | null; features: string[] }> = {
   byod: {
     label: 'BYOD', branches: 1,
-    features: ['1 till', '5 staff accounts', 'Inventory', 'Basic reports', 'Offline first', 'Cloud synchronization', 'Support'],
+    features: [...limitLines('byod'), 'Inventory', 'Basic reports', 'Offline first', 'Cloud synchronization', 'Support'],
   },
   standard: {
     label: 'Standard', branches: 5,
-    features: ['Everything in BYOD', '10" Android tablet + Bluetooth thermal printer included', 'Implementation training included', 'AI Insights', 'Task management'],
+    features: ['Everything in BYOD', ...limitLines('standard'), '10" Android tablet + Bluetooth thermal printer included', 'Implementation training included', 'AI Insights', 'Task management'],
   },
   premium: {
     label: 'Premium', branches: null,
-    features: ['Everything in Standard', '12" Android tablet (upgraded)', 'Payroll & HR', 'ZIMRA Fiscalisation included', 'Priority support'],
+    features: ['Everything in Standard', ...limitLines('premium'), '12" Android tablet (upgraded)', 'Payroll & HR', 'ZIMRA Fiscalisation included', 'Priority support'],
   },
 };
 

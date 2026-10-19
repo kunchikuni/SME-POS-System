@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import AppLayout from "../../Layouts/AppLayout.js";
 import { usePageTitle, useQuery, useMutation, useFlash } from "../../lib/hooks.js";
 import { api, type Device, type Branch } from "../../lib/api.js";
@@ -21,7 +22,7 @@ export default function DevicesIndex() {
   const devices: Device[] = data?.devices ?? [];
   const branches: Branch[] = (data?.branches ?? []) as Branch[];
 
-  const { submit: createDevice, loading: creating, errors } = useMutation(
+  const { submit: createDevice, loading: creating, errors, error: createError, code: createCode } = useMutation(
     (d: { name: string; branchId: string }) => api.devices.create(d),
     {
       onSuccess: (r) => {
@@ -96,6 +97,14 @@ export default function DevicesIndex() {
         </button>
       </form>
       {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name}</p>}
+      {createError && !errors.name && (
+        <p className="mt-2 max-w-xl rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">
+          {createError}
+          {createCode === "plan_limit_reached" && (
+            <> <Link to="/settings/payments" className="font-semibold underline">See plans</Link></>
+          )}
+        </p>
+      )}
 
       {loading ? (
         <div className="mt-8 flex justify-center">

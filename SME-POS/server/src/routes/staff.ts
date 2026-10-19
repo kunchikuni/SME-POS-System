@@ -4,6 +4,7 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { db } from '../lib/db.js';
+import { canAddStaff, planLimitRefusal } from '../domain/billing/entitlementService.js';
 import type { HonoVars } from '../lib/context.js';
 
 export const staffRoutes = new Hono<{ Variables: HonoVars }>();
@@ -69,22 +70,36 @@ staffRoutes.post('/', async (ctx) => {
     return ctx.json({ errors: { email: 'Owners and managers need an email to sign in.' } }, 422);
   }
 
+  // The plan's staff limit counts every active login -- the owner included, as one --
+  // so adding a second "owner" can't be used to get round it.
+  const activeAccounts = await db.user.count({ where: { tenantId: tenant.id, deletedAt: null } });
+  if (!canAddStaff(tenant, activeAccounts)) return ctx.json(planLimitRefusal(tenant, 'staff'), 403);
+
   const credential = isDashboard ? generateTempPassword() : generatePin();
   const pinHash = !isDashboard ? await bcrypt.hash(credential, 10) : null;
   const password = isDashboard ? await bcrypt.hash(credential, 12) : null;
 
-  const newUser = await db.user.create({
-    data: {
-      id: crypto.randomUUID(),
-      tenantId: tenant.id,
-      name: data.name,
-      role: data.role,
-      branchId: data.branchId ?? null,
-      email: isDashboard ? data.email! : '',
-      password: password ?? '',
-      pinHash,
-    },
-  });
+  let newUser;
+  try {
+    newUser = await db.user.create({
+      data: {
+        id: crypto.randomUUID(),
+        tenantId: tenant.id,
+        name: data.name,
+        role: data.role,
+        branchId: data.branchId ?? null,
+        email: isDashboard ? data.email! : '',
+        password: password ?? '',
+        pinHash,
+      },
+    });
+  } catch (err) {
+    // Email is unique within a business (see prisma/post-push.sql): say so, rather than a bare 500.
+    if ((err as { code?: string } | null)?.code === 'P2002') {
+      return ctx.json({ errors: { email: 'Another account in this business already uses that email.' } }, 422);
+    }
+    throw err;
+  }
 
   return ctx.json({
     staffCredential: { name: newUser.name, kind: isDashboard ? 'password' : 'pin', value: credential },
@@ -149,6 +164,12 @@ staffRoutes.post('/:id/restore', async (ctx) => {
   const tenant = ctx.get('tenant');
   const staffMember = await db.user.findFirst({ where: { id: ctx.req.param('id'), tenantId: tenant.id } });
   if (!staffMember) return ctx.json({ message: 'Not found.' }, 404);
+
+  // Reactivating adds an active login back, so it counts against the plan like a new one.
+  if (staffMember.deletedAt !== null) {
+    const activeAccounts = await db.user.count({ where: { tenantId: tenant.id, deletedAt: null } });
+    if (!canAddStaff(tenant, activeAccounts)) return ctx.json(planLimitRefusal(tenant, 'staff'), 403);
+  }
 
   await db.user.update({ where: { id: staffMember.id }, data: { deletedAt: null } });
   return ctx.json({ message: `Reactivated ${staffMember.name}.` });

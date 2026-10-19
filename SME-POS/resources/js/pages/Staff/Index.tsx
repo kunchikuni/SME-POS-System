@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import AppLayout from "../../Layouts/AppLayout.js";
 import { usePageTitle, useQuery, useMutation, useFlash } from "../../lib/hooks.js";
 import { api, type StaffMember } from "../../lib/api.js";
@@ -22,7 +23,7 @@ export default function StaffIndex() {
   const staff = data?.staff ?? [];
   const branches = data?.branches ?? [];
 
-  const { submit: createStaff, loading: creating, errors, error } = useMutation(
+  const { submit: createStaff, loading: creating, errors, error, code } = useMutation(
     (d: typeof form) => api.staff.create(d),
     {
       onSuccess: (r) => {
@@ -118,7 +119,14 @@ export default function StaffIndex() {
 
       {showAdd && (
         <Modal title="Add Staff Member" onClose={() => setShowAdd(false)}>
-          {error && <p className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>}
+          {error && (
+            <p className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">
+              {error}
+              {code === "plan_limit_reached" && (
+                <> <Link to="/settings/payments" className="font-semibold underline">See plans</Link></>
+              )}
+            </p>
+          )}
           <div className="space-y-3">
             <Field label="Full name" value={form.name} onChange={(v) => setForm(f => ({ ...f, name: v }))} error={errors.name} />
             <div>

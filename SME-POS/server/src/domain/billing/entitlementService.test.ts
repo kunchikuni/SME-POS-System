@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
 import {
-  DEVICE_GRACE_DAYS, MAINTENANCE_GRACE_DAYS, accessState, accessSummary, branchLimit, canAddBranch, deviceGraceDays, hasAccess,
-  hasFeature, planKey, type TenantForEntitlement,
+  DEVICE_GRACE_DAYS, MAINTENANCE_GRACE_DAYS, accessState, accessSummary, branchLimit, canAddBranch, canAddStaff, canAddTill,
+  deviceGraceDays, hasAccess, hasFeature, planKey, planLimitRefusal, planLimits, staffLimit, tillLimit, type TenantForEntitlement,
 } from './entitlementService.js';
 import { ensureDeviceSubscribed } from '../../middleware/ensureDeviceSubscribed.js';
 import { ensureSubscribed } from '../../middleware/ensureSubscribed.js';
@@ -72,6 +72,66 @@ describe('branch limits', () => {
   it('keeps BYOD to its one branch', () => {
     expect(canAddBranch(paid('byod', 20), 0)).toBe(true);
     expect(canAddBranch(paid('byod', 20), 1)).toBe(false);
+  });
+});
+
+describe('till and staff limits', () => {
+  it('BYOD: 1 till and 5 staff; Standard: 2 tills per branch and 15 staff; Premium and a trial: no limit', () => {
+    expect([tillLimit(paid('byod', 20)), staffLimit(paid('byod', 20))]).toEqual([1, 5]);
+    expect([tillLimit(paid('standard', 20)), staffLimit(paid('standard', 20))]).toEqual([2, 15]);
+    expect([tillLimit(paid('premium', 20)), staffLimit(paid('premium', 20))]).toEqual([null, null]);
+    expect([tillLimit(paid('pro', 20)), staffLimit(paid('pro', 20))]).toEqual([null, null]);
+    expect([tillLimit(trial(3)), staffLimit(trial(3))]).toEqual([null, null]);
+  });
+
+  it('gives a plan it does not know, or a finished trial, the smallest limits (BYOD\'s)', () => {
+    for (const t of [paid('enterprise', 20), paid('constructor', 20), trial(-5)]) {
+      expect([tillLimit(t), staffLimit(t)]).toEqual([1, 5]);
+    }
+  });
+
+  it('planLimits describes a plan by key, for the plan cards', () => {
+    expect(planLimits('byod')).toEqual({ branches: 1, tillsPerBranch: 1, staff: 5 });
+    expect(planLimits('standard')).toEqual({ branches: 5, tillsPerBranch: 2, staff: 15 });
+    expect(planLimits('premium')).toEqual({ branches: null, tillsPerBranch: null, staff: null });
+    expect(planLimits('nonsense')).toEqual(planLimits('byod'));
+  });
+
+  it('a BYOD branch holds one till; a Standard branch holds two', () => {
+    expect(canAddTill(paid('byod', 20), 0)).toBe(true);
+    expect(canAddTill(paid('byod', 20), 1)).toBe(false);
+    expect(canAddTill(paid('standard', 20), 1)).toBe(true);
+    expect(canAddTill(paid('standard', 20), 2)).toBe(false);
+    expect(canAddTill(paid('premium', 20), 40)).toBe(true);
+  });
+
+  it('staff are everyone but the owner: BYOD may have an owner plus five, Standard an owner plus fifteen', () => {
+    expect(canAddStaff(paid('byod', 20), 1)).toBe(true);   // the owner alone
+    expect(canAddStaff(paid('byod', 20), 5)).toBe(true);   // owner + 4 → the 5th staff
+    expect(canAddStaff(paid('byod', 20), 6)).toBe(false);  // owner + 5 → no 6th
+    expect(canAddStaff(paid('standard', 20), 15)).toBe(true);
+    expect(canAddStaff(paid('standard', 20), 16)).toBe(false);
+    expect(canAddStaff(paid('premium', 20), 400)).toBe(true);
+  });
+
+  it('counts a second "owner" as staff too, so it cannot be used to get round the cap', () => {
+    // 6 active logins on BYOD, however their roles are labelled, is already full.
+    expect(canAddStaff(paid('byod', 20), 6)).toBe(false);
+  });
+
+  it('does not mistake an empty business for a negative staff count', () => {
+    expect(canAddStaff(paid('byod', 20), 0)).toBe(true);
+  });
+
+  it('refuses with a stable code, which limit, and the number allowed', () => {
+    expect(planLimitRefusal(paid('byod', 20), 'tills')).toMatchObject({
+      code: 'plan_limit_reached', limit: 'tills', allowed: 1, message: expect.stringContaining('1 till per branch'),
+    });
+    expect(planLimitRefusal(paid('standard', 20), 'tills').message).toContain('2 tills per branch');
+    expect(planLimitRefusal(paid('byod', 20), 'staff')).toMatchObject({
+      code: 'plan_limit_reached', limit: 'staff', allowed: 5, message: expect.stringContaining('5 staff accounts besides the owner'),
+    });
+    expect(planLimitRefusal(paid('byod', 20), 'staff').message).toContain('Settings > Payments');
   });
 });
 

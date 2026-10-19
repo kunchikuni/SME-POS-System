@@ -15,10 +15,18 @@
  *
  * Re-runnable: skips if the demo tenant already exists.
  * Rebuild from scratch: delete the "demo" tenant row (cascades), then re-run.
+ * A second, throwaway sandbox: SEED_SUBDOMAIN=other SEED_DEVICE_TOKEN=other-token
+ * (a till's token must be unique across businesses, so it needs its own).
  *
  * Run with: npx prisma db seed   (wired via package.json's "prisma.seed" key)
+ *
+ * The demo is on a year-long free trial, not a paid plan with nothing paid: a
+ * business with no paid subscription and no trial is blocked by the payment gate
+ * (middleware/ensureSubscribed.ts), and the trial is the one state that shows
+ * every feature with no limits -- what a demo wants.
  */
 import { db } from '../server/src/lib/db.js';
+import { runWithTenant } from '../server/src/lib/tenantScope.js';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 
@@ -28,12 +36,13 @@ import crypto from 'node:crypto';
 // path (server/src/generated/prisma), so a bare `new PrismaClient()` here
 // — the usual seed-script boilerplate — would not work.
 
-const SUBDOMAIN = 'demo';
+const SUBDOMAIN = process.env.SEED_SUBDOMAIN ?? 'demo';
+const TRIAL_DAYS = 365;
 const OWNER_EMAIL = 'owner@demo.test';
 const OWNER_PASSWORD = 'password';
 const MANAGER_EMAIL = 'manager@demo.test';
 const MANAGER_PASSWORD = 'password';
-const DEVICE_TOKEN = 'demo-device-token'; // fixed in dev so the PWA can authenticate without provisioning
+const DEVICE_TOKEN = process.env.SEED_DEVICE_TOKEN ?? 'demo-device-token'; // fixed in dev so the PWA can authenticate without provisioning
 const CASHIER_PIN = '1234';
 // Owner/manager till PINs — without one they never reach the till (bootstrap
 // only ships staff with a pinHash), so owner/manager-only till actions like
@@ -60,13 +69,23 @@ async function main() {
       id: tenantId,
       name: 'Demo Store',
       subdomain: SUBDOMAIN,
-      plan: 'standard',
+      plan: 'trial',
+      trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
       status: 'active',
       taxRateBps: 1500,
     },
   });
 
-  const branch = await db.branch.create({
+  // Every query on the rows below is tenant-scoped (lib/tenantScope.ts): outside a
+  // tenant context it throws rather than run unscoped -- which is what stopped this
+  // script working at all. Run it inside the new tenant's context, as a request would.
+  await runWithTenant(tenantId, () => seedTenant(tenantId, branchId, ownerId));
+
+  report(tenant.subdomain);
+}
+
+async function seedTenant(tenantId: string, branchId: string, ownerId: string) {
+  await db.branch.create({
     data: { id: branchId, tenantId, name: 'Main Branch', isDefault: true },
   });
 
@@ -88,8 +107,6 @@ async function main() {
   await seedStaff(tenantId, branchId);
   await seedTables(tenantId, branchId);
   await seedTasks(tenantId, branchId);
-
-  report(tenant.subdomain);
 }
 
 /**
@@ -173,8 +190,8 @@ async function seedStaff(tenantId: string, branchId: string) {
       tenantId,
       branchId,
       name: 'Tariro',
-      email: `tariro+${crypto.randomUUID().slice(0, 8)}@demo.test`, // (tenantId,email) is unique — cashiers still need a placeholder
-      password: await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 12), // never used to log in
+      email: '', // till-only staff have no login (routes/staff.ts stores '' too)
+      password: '',
       role: 'cashier',
       pinHash: await bcrypt.hash(CASHIER_PIN, 10),
     },

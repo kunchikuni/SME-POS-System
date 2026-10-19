@@ -350,6 +350,16 @@ describe('GET /billing/payments', () => {
     expect(Object.fromEntries(plans.map((p: any) => [p.key, p.branches]))).toEqual({ byod: 1, standard: 5, premium: null });
   });
 
+  it("plan cards state the till and staff limits the server enforces", async () => {
+    const { plans } = await get(appFor());
+    const features = Object.fromEntries(plans.map((p: any) => [p.key, p.features as string[]]));
+    expect(features.byod).toEqual(expect.arrayContaining(['1 till', '5 staff accounts']));
+    expect(features.standard).toEqual(expect.arrayContaining(['Up to 2 tills per branch', '15 staff accounts']));
+    expect(features.premium).toContain('Unlimited tills and staff accounts');
+    // Standard must not claim BYOD's single till through "Everything in BYOD" alone.
+    expect(features.standard.indexOf('Up to 2 tills per branch')).toBeGreaterThan(features.standard.indexOf('Everything in BYOD'));
+  });
+
   it('lists the ways to pay ahead, with the months actually charged for each', async () => {
     const { prepay } = await get(appFor());
     expect(prepay).toEqual([

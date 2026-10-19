@@ -87,6 +87,8 @@ interface MutationState {
   loading: boolean;
   error: string | null;
   errors: Record<string, string>;
+  /** The server's stable error code, when it sent one (e.g. 'plan_limit_reached') — lets a page offer the right next step. */
+  code: string | null;
 }
 
 /**
@@ -105,19 +107,20 @@ export function useMutation<TArgs, TResult = void>(
     onError?: (err: ApiError | Error) => void;
   },
 ) {
-  const [state, setState] = useState<MutationState>({ loading: false, error: null, errors: {} });
+  const [state, setState] = useState<MutationState>({ loading: false, error: null, errors: {}, code: null });
 
   const submit = useCallback(
     async (args: TArgs) => {
-      setState({ loading: true, error: null, errors: {} });
+      setState({ loading: true, error: null, errors: {}, code: null });
       try {
         const result = await mutator(args);
-        setState({ loading: false, error: null, errors: {} });
+        setState({ loading: false, error: null, errors: {}, code: null });
         options?.onSuccess?.(result);
         return result;
       } catch (err) {
         let msg = 'Something went wrong.';
         let fieldErrors: Record<string, string> = {};
+        let code: string | null = null;
 
         if (err instanceof ApiError) {
           msg = err.message;
@@ -126,13 +129,14 @@ export function useMutation<TArgs, TResult = void>(
           if (body?.errors && typeof body.errors === 'object') {
             fieldErrors = body.errors;
           }
+          if (typeof body?.code === 'string') code = body.code;
           options?.onError?.(err);
         } else if (err instanceof Error) {
           msg = err.message;
           options?.onError?.(err);
         }
 
-        setState({ loading: false, error: msg, errors: fieldErrors });
+        setState({ loading: false, error: msg, errors: fieldErrors, code });
         return null;
       }
     },
