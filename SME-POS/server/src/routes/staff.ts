@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { db } from '../lib/db.js';
 import { canAddStaff, planLimitRefusal } from '../domain/billing/entitlementService.js';
+import { withTenantLock } from '../lib/tenantLock.js';
 import type { HonoVars } from '../lib/context.js';
 
 export const staffRoutes = new Hono<{ Variables: HonoVars }>();
@@ -71,7 +72,8 @@ staffRoutes.post('/', async (ctx) => {
   }
 
   // The plan's staff limit counts every active login -- the owner included, as one --
-  // so adding a second "owner" can't be used to get round it.
+  // so adding a second "owner" can't be used to get round it. This early look just spares
+  // a refused request the cost of hashing; the check that counts is the one under the lock below.
   const activeAccounts = await db.user.count({ where: { tenantId: tenant.id, deletedAt: null } });
   if (!canAddStaff(tenant, activeAccounts)) return ctx.json(planLimitRefusal(tenant, 'staff'), 403);
 
@@ -81,18 +83,25 @@ staffRoutes.post('/', async (ctx) => {
 
   let newUser;
   try {
-    newUser = await db.user.create({
-      data: {
-        id: crypto.randomUUID(),
-        tenantId: tenant.id,
-        name: data.name,
-        role: data.role,
-        branchId: data.branchId ?? null,
-        email: isDashboard ? data.email! : '',
-        password: password ?? '',
-        pinHash,
-      },
+    // Count and add under one lock on the business: requests that arrive together each
+    // see what the one before added, instead of all finding room (lib/tenantLock.ts).
+    newUser = await withTenantLock(tenant.id, async (tx) => {
+      const accounts = await tx.user.count({ where: { tenantId: tenant.id, deletedAt: null } });
+      if (!canAddStaff(tenant, accounts)) return null;
+      return tx.user.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenantId: tenant.id,
+          name: data.name,
+          role: data.role,
+          branchId: data.branchId ?? null,
+          email: isDashboard ? data.email! : '',
+          password: password ?? '',
+          pinHash,
+        },
+      });
     });
+    if (!newUser) return ctx.json(planLimitRefusal(tenant, 'staff'), 403);
   } catch (err) {
     // Email is unique within a business (see prisma/post-push.sql): say so, rather than a bare 500.
     if ((err as { code?: string } | null)?.code === 'P2002') {
@@ -165,13 +174,18 @@ staffRoutes.post('/:id/restore', async (ctx) => {
   const staffMember = await db.user.findFirst({ where: { id: ctx.req.param('id'), tenantId: tenant.id } });
   if (!staffMember) return ctx.json({ message: 'Not found.' }, 404);
 
-  // Reactivating adds an active login back, so it counts against the plan like a new one.
+  // Reactivating adds an active login back, so it counts against the plan like a new one --
+  // counted and done under the lock on the business, like adding one (lib/tenantLock.ts).
   if (staffMember.deletedAt !== null) {
-    const activeAccounts = await db.user.count({ where: { tenantId: tenant.id, deletedAt: null } });
-    if (!canAddStaff(tenant, activeAccounts)) return ctx.json(planLimitRefusal(tenant, 'staff'), 403);
+    const restored = await withTenantLock(tenant.id, async (tx) => {
+      const activeAccounts = await tx.user.count({ where: { tenantId: tenant.id, deletedAt: null } });
+      if (!canAddStaff(tenant, activeAccounts)) return false;
+      await tx.user.update({ where: { id: staffMember.id }, data: { deletedAt: null } });
+      return true;
+    });
+    if (!restored) return ctx.json(planLimitRefusal(tenant, 'staff'), 403);
   }
 
-  await db.user.update({ where: { id: staffMember.id }, data: { deletedAt: null } });
   return ctx.json({ message: `Reactivated ${staffMember.name}.` });
 });
 

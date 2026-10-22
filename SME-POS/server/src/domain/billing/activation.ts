@@ -12,6 +12,7 @@
  * once: a payment buys its period ONCE.
  */
 import { db } from '../../lib/db.js';
+import { withTenantLock } from '../../lib/tenantLock.js';
 import { monthsFromReference, nextPeriodEnd } from './maintenance.js';
 
 /** The tenant's latest PAID subscription of this plan. (Tenant-scoped: call inside a tenant context.) */
@@ -48,15 +49,12 @@ export async function activatePayment(subscription: PendingPayment): Promise<boo
   const { tenantId, plan } = subscription;
 
   let activated = false;
-  await db.$transaction(async (tx) => {
-    // One payment of a business is applied at a time. Two can be confirmed together
-    // (the webhook and "check my payment", or two payments still in flight, such as
-    // an EcoCash prompt left unanswered and approved later); if both read the same
-    // paid-through date and each added its months to it, every one but the last
-    // would be lost -- the owner paying twice for one month. The lock is released when
-    // this transaction ends.
-    await tx.$queryRaw`SELECT id FROM tenants WHERE id = ${tenantId}::uuid FOR UPDATE`;
-
+  // One payment of a business is applied at a time (lib/tenantLock.ts). Two can be confirmed
+  // together (the webhook and "check my payment", or two payments still in flight, such as
+  // an EcoCash prompt left unanswered and approved later); if both read the same
+  // paid-through date and each added its months to it, every one but the last
+  // would be lost -- the owner paying twice for one month.
+  await withTenantLock(tenantId, async (tx) => {
     // Claim the row: if a concurrent delivery already activated it, do nothing.
     const pending = await tx.subscription.findFirst({ where: { id: subscription.id, tenantId, status: { not: 'active' } } });
     if (!pending) return;
@@ -88,18 +86,9 @@ export async function activatePayment(subscription: PendingPayment): Promise<boo
       data: { plan },
     });
     activated = true;
-  }, TRANSACTION_PATIENCE);
+  });
   return activated;
 }
-
-/**
- * A payment waits its turn for the business lock, and that wait counts against the
- * transaction's time limit. Prisma's default is 5s -- not enough for several payments
- * queued behind one another on a database that is a long round trip away (six at once
- * took ~8s here), and the ones that ran out answered Paynow with a 500 although the
- * owner had paid. Generous, because a held lock is only ever a few statements long.
- */
-export const TRANSACTION_PATIENCE = { maxWait: 15_000, timeout: 60_000 } as const;
 
 /** How long an unpaid attempt is still worth asking Paynow about. */
 export const PENDING_WINDOW_MS = 48 * 60 * 60 * 1000;

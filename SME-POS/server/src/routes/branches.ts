@@ -4,6 +4,7 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db } from '../lib/db.js';
 import { canAddBranch } from '../domain/billing/entitlementService.js';
+import { withTenantLock } from '../lib/tenantLock.js';
 import type { HonoVars } from '../lib/context.js';
 import { branchKind } from '../domain/businessTypes.js';
 export const branchRoutes = new Hono<{ Variables: HonoVars }>();
@@ -19,10 +20,18 @@ branchRoutes.get('/', async (ctx) => {
 branchRoutes.post('/', async (ctx) => {
   const u = ctx.get('user'); const t = ctx.get('tenant');
   if (!ADMIN_ROLES.has(u.role)) return ctx.json({ message: 'Forbidden.' }, 403);
+  const overLimit = () => ctx.json({ message: 'Branch limit reached for your plan.' }, 403);
+  // A quick refusal first; the check that counts is the one under the lock below.
   const count = await db.branch.count({ where: { tenantId: t.id, deletedAt: null } });
-  if (!canAddBranch(t, count)) return ctx.json({ message: 'Branch limit reached for your plan.' }, 403);
+  if (!canAddBranch(t, count)) return overLimit();
   const d = z.object({ name: z.string().min(1), address: z.string().nullable().optional(), mode: z.enum(['retail','restaurant','hardware','workshop']).default('retail') }).parse(await ctx.req.json());
-  const b = await db.branch.create({ data: { id: crypto.randomUUID(), tenantId: t.id, name: d.name, address: d.address ?? null, mode: d.mode } });
+  // Counted and added under one lock on the business: branches created together can't each find room (lib/tenantLock.ts).
+  const b = await withTenantLock(t.id, async (tx) => {
+    const now = await tx.branch.count({ where: { tenantId: t.id, deletedAt: null } });
+    if (!canAddBranch(t, now)) return null;
+    return tx.branch.create({ data: { id: crypto.randomUUID(), tenantId: t.id, name: d.name, address: d.address ?? null, mode: d.mode } });
+  });
+  if (!b) return overLimit();
   return ctx.json(b, 201);
 });
 branchRoutes.patch('/:id', async (ctx) => {

@@ -14,6 +14,7 @@ import { Hono } from 'hono';
 import crypto from 'node:crypto';
 import { db } from '../lib/db.js';
 import { canAddTill, planLimitRefusal } from '../domain/billing/entitlementService.js';
+import { withTenantLock } from '../lib/tenantLock.js';
 import type { HonoVars } from '../lib/context.js';
 import { businessTypeFor } from '../domain/businessTypes.js';
 import { addStarters, missingStarters } from '../domain/catalogue.js';
@@ -81,18 +82,23 @@ onboardingRoutes.post('/till', async (ctx) => {
   });
   if (!branch) return ctx.json({ message: 'No branch found.' }, 422);
 
-  // This route makes a NEW till every time it is called ("Set up another till here"), so it
-  // is held to the plan's till limit exactly as POST /devices is -- otherwise it was a way round it.
-  const inBranch = await db.device.count({ where: { tenantId: t.id, branchId: branch.id, deletedAt: null } });
-  if (!canAddTill(t, inBranch)) return ctx.json(planLimitRefusal(t, 'tills'), 403);
-
-  const count = await db.device.count({ where: { tenantId: t.id, deletedAt: null } });
   // Same token scheme as POST /devices: random, returned once, stored only hashed.
   const token = crypto.randomBytes(32).toString('hex');
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-  const device = await db.device.create({
-    data: { id: crypto.randomUUID(), tenantId: t.id, branchId: branch.id, name: `Till ${count + 1}`, tokenHash },
+
+  // This route makes a NEW till every time it is called ("Set up another till here"), so it
+  // is held to the plan's till limit exactly as POST /devices is -- otherwise it was a way round it --
+  // and, like that route, counts and adds under one lock on the business (lib/tenantLock.ts).
+  // The till's number is taken under the same lock, so tills made together are not both "Till 2".
+  const device = await withTenantLock(t.id, async (tx) => {
+    const inBranch = await tx.device.count({ where: { tenantId: t.id, branchId: branch.id, deletedAt: null } });
+    if (!canAddTill(t, inBranch)) return null;
+    const count = await tx.device.count({ where: { tenantId: t.id, deletedAt: null } });
+    return tx.device.create({
+      data: { id: crypto.randomUUID(), tenantId: t.id, branchId: branch.id, name: `Till ${count + 1}`, tokenHash },
+    });
   });
+  if (!device) return ctx.json(planLimitRefusal(t, 'tills'), 403);
 
   return ctx.json({ id: device.id, name: device.name, branch: branch.name, token }, 201);
 });

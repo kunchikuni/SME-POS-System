@@ -4,7 +4,9 @@ import { Hono } from 'hono';
 /**
  * The plan limits as the routes enforce them: pairing a till and adding a staff
  * account are refused past what the plan allows, with a stable code, and
- * nothing is created. The database is a small in-memory stand-in.
+ * nothing is created -- also when many requests arrive TOGETHER. The database is a small
+ * in-memory stand-in whose transactions queue on the business lock the way Postgres's
+ * `SELECT ... FOR UPDATE` makes them.
  */
 const BRANCH_A = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
 const BRANCH_B = '6ba7b810-9dad-41d1-80b4-00c04fd430c8';
@@ -12,36 +14,66 @@ const BRANCH_B = '6ba7b810-9dad-41d1-80b4-00c04fd430c8';
 const mem = vi.hoisted(() => ({
   devices: [] as any[],
   users: [] as any[],
+  branches: [] as any[],
+  /** Each time a request took the lock on a business (a transaction began), in order. */
+  locks: [] as string[],
+  /** Every database call, in order, tagged "db:" (the shared pool) or "tx:" (inside a transaction), with "lock" where the business lock was taken. */
+  calls: [] as string[],
   /** An email the database already has an account for: creating another with it hits the unique index. */
   takenEmail: null as string | null,
 }));
 
-vi.mock('../lib/db.js', () => ({
-  db: {
-    branch: {
-      findFirst: async ({ where }: any) =>
-        // The onboarding route asks for "the default branch" (no id); the devices route asks for one by id.
-        where.id === undefined ? { id: '3f2504e0-4f89-41d3-9a0c-0305e82c3301', name: 'Main' }
-        : where.id === '3f2504e0-4f89-41d3-9a0c-0305e82c3301' || where.id === '6ba7b810-9dad-41d1-80b4-00c04fd430c8' ? { id: where.id } : null,
+vi.mock('../lib/db.js', () => {
+  const branch = {
+    findFirst: async ({ where }: any) =>
+      // The onboarding route asks for "the default branch" (no id); the devices route asks for one by id.
+      where.id === undefined ? { id: '3f2504e0-4f89-41d3-9a0c-0305e82c3301', name: 'Main' }
+      : where.id === '3f2504e0-4f89-41d3-9a0c-0305e82c3301' || where.id === '6ba7b810-9dad-41d1-80b4-00c04fd430c8' ? { id: where.id } : null,
+    count: async ({ where }: any) => mem.branches.filter((b) => (where.deletedAt === null ? b.deletedAt === null : true)).length,
+    create: async ({ data }: any) => { mem.branches.push({ ...data, deletedAt: null }); return data; },
+  };
+  const device = {
+    // Honour the query as written: a caller that forgets to leave out removed tills counts them.
+    count: async ({ where }: any) =>
+      mem.devices.filter((d) => (where.branchId === undefined || d.branchId === where.branchId) && (where.deletedAt === null ? d.deletedAt === null : true)).length,
+    create: async ({ data }: any) => { mem.devices.push({ ...data, deletedAt: null }); return data; },
+  };
+  const user = {
+    count: async ({ where }: any) => mem.users.filter((u) => (where.deletedAt === null ? u.deletedAt === null : true)).length,
+    create: async ({ data }: any) => {
+      if (mem.takenEmail && data.email === mem.takenEmail) throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+      mem.users.push({ ...data, deletedAt: null });
+      return data;
     },
-    device: {
-      // Honour the query as written: a caller that forgets to leave out removed tills counts them.
-      count: async ({ where }: any) =>
-        mem.devices.filter((d) => d.branchId === where.branchId && (where.deletedAt === null ? d.deletedAt === null : true)).length,
-      create: async ({ data }: any) => { mem.devices.push({ ...data, deletedAt: null }); return data; },
-    },
-    user: {
-      count: async ({ where }: any) => mem.users.filter((u) => (where.deletedAt === null ? u.deletedAt === null : true)).length,
-      create: async ({ data }: any) => {
-        if (mem.takenEmail && data.email === mem.takenEmail) throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
-        mem.users.push({ ...data, deletedAt: null });
-        return data;
-      },
-      findFirst: async ({ where }: any) => mem.users.find((u) => u.id === where.id) ?? null,
-      update: async ({ where, data }: any) => { Object.assign(mem.users.find((u) => u.id === where.id), data); return {}; },
-    },
-  },
-}));
+    findFirst: async ({ where }: any) => mem.users.find((u) => u.id === where.id) ?? null,
+    update: async ({ where, data }: any) => { Object.assign(mem.users.find((u) => u.id === where.id), data); return {}; },
+  };
+  // The same models, recording each call under the connection it went through.
+  const through = (tag: string) => {
+    const wrap = (name: string, model: Record<string, (...a: any[]) => Promise<any>>) =>
+      Object.fromEntries(Object.entries(model).map(([k, fn]) => [k, async (...a: any[]) => { mem.calls.push(tag + ':' + name + '.' + k); return fn(...a); }]));
+    return { branch: wrap('branch', branch), device: wrap('device', device), user: wrap('user', user) };
+  };
+  // `SELECT ... FOR UPDATE` on the business: a second transaction for it WAITS until the first has finished.
+  const queue = new Map<string, Promise<void>>();
+  const $transaction = async (fn: any, _options?: unknown) => {
+    const releases: (() => void)[] = [];
+    const $queryRaw = async (_strings: TemplateStringsArray, ...values: unknown[]) => {
+      const key = String(values[0]);
+      mem.locks.push(key);
+      mem.calls.push('lock');
+      const before = queue.get(key) ?? Promise.resolve();
+      let release!: () => void;
+      const mine = new Promise<void>((r) => { release = r; });
+      queue.set(key, before.then(() => mine));
+      releases.push(release);
+      await before;
+      return [{ id: key }];
+    };
+    try { return await fn({ ...through('tx'), $queryRaw }); } finally { releases.forEach((r) => r()); }
+  };
+  return { db: { ...through('db'), $transaction } };
+});
 
 // Hashing a PIN or password is real work (it is meant to be); these tests add dozens of accounts and don't test it.
 vi.mock('bcryptjs', () => ({ default: { hash: async () => 'hashed', compare: async () => true } }));
@@ -49,6 +81,7 @@ vi.mock('bcryptjs', () => ({ default: { hash: async () => 'hashed', compare: asy
 const { deviceRoutes } = await import('./devices.js');
 const { staffRoutes } = await import('./staff.js');
 const { onboardingRoutes } = await import('./onboarding.js');
+const { branchRoutes } = await import('./branches.js');
 
 const DAY = 86_400_000;
 const tenantOn = (plan: string, trialEndsInDays?: number) =>
@@ -69,6 +102,7 @@ function appFor(tenant: any, role = 'owner') {
   app.route('/devices', deviceRoutes);
   app.route('/staff', staffRoutes);
   app.route('/onboarding', onboardingRoutes);
+  app.route('/branches', branchRoutes);
   return app;
 }
 
@@ -81,6 +115,9 @@ const addStaff = (app: Hono, n: number, role = 'cashier') => post(app, '/staff',
 beforeEach(() => {
   mem.takenEmail = null;
   mem.devices = [];
+  mem.branches = [{ id: BRANCH_A, deletedAt: null }]; // every business has its first branch
+  mem.locks = [];
+  mem.calls = [];
   mem.users = [{ id: 'u-owner', role: 'owner', deletedAt: null }]; // every business has its owner
 });
 
@@ -242,5 +279,94 @@ describe('adding a staff account', () => {
     const res = await addStaff(appFor(tenantOn('byod'), 'cashier'), 1);
     expect(res.status).toBe(403);
     expect(await res.json()).toMatchObject({ message: 'Forbidden.' });
+  });
+});
+
+describe('requests that arrive together', () => {
+  // Counting and then adding is not safe on its own: ten requests that arrive at once all count the
+  // same number and all find room. Measured against a real database before this was fixed: a business
+  // allowed 5 staff took 12, one allowed 5 branches took 11, a branch allowed 2 tills took 7.
+  const all = (n: number, make: (i: number) => Response | Promise<Response>) => Promise.all(Array.from({ length: n }, (_, i) => make(i)));
+  const statuses = (rs: Response[]) => rs.map((r) => r.status);
+  const created = (rs: Response[]) => rs.filter((r) => r.status === 201 || r.status === 200).length;
+
+  it('twelve staff added at once on BYOD: exactly five get in, the rest are refused with the plan code', async () => {
+    const app = appFor(tenantOn('byod'));
+    const rs = await all(12, (i) => addStaff(app, i));
+    expect(created(rs)).toBe(5);
+    expect(statuses(rs).filter((s) => s === 403)).toHaveLength(7);
+    expect(mem.users).toHaveLength(6); // the owner and five
+    expect(await rs.find((r) => r.status === 403)!.json()).toMatchObject({ code: 'plan_limit_reached', limit: 'staff' });
+  });
+
+  it('six reactivations at once with room for two: exactly two come back', async () => {
+    mem.users = [{ id: 'u-owner', role: 'owner', deletedAt: null }];
+    for (let i = 0; i < 3; i++) mem.users.push({ id: 'on' + i, role: 'cashier', deletedAt: null });
+    for (let i = 0; i < 6; i++) mem.users.push({ id: 'off' + i, role: 'cashier', name: 'Gone ' + i, deletedAt: new Date() });
+    const app = appFor(tenantOn('byod'));
+    const rs = await all(6, (i) => post(app, '/staff/off' + i + '/restore'));
+    expect(created(rs)).toBe(2);
+    expect(mem.users.filter((u) => u.deletedAt === null && u.role !== 'owner')).toHaveLength(5);
+  });
+
+  it('eight tills paired at once into one branch of a Standard business: exactly two, whichever route they came by', async () => {
+    const app = appFor(tenantOn('standard'));
+    const rs = await Promise.all([
+      ...Array.from({ length: 4 }, (_, i) => pair(app, BRANCH_A, 'By hand ' + i)),
+      ...Array.from({ length: 4 }, () => post(app, '/onboarding/till')),
+    ]);
+    expect(created(rs)).toBe(2);
+    expect(mem.devices.filter((d) => d.branchId === BRANCH_A)).toHaveLength(2);
+  });
+
+  it('tills opened together from the dashboard get different numbers, not two "Till 2"', async () => {
+    const app = appFor(tenantOn('premium'));
+    const rs = await all(4, () => post(app, '/onboarding/till'));
+    const names = (await Promise.all(rs.map((r) => r.json()))).map((j: any) => j.name).sort();
+    expect(names).toEqual(['Till 1', 'Till 2', 'Till 3', 'Till 4']);
+  });
+
+  it('ten branches added at once to a Standard business that has one: four more, to its limit of five', async () => {
+    const app = appFor(tenantOn('standard'));
+    const rs = await all(10, (i) => post(app, '/branches', { name: 'Branch ' + i }));
+    expect(created(rs)).toBe(4);
+    expect(mem.branches).toHaveLength(5);
+  });
+
+  it('a request that is plainly over the limit is refused without taking the lock at all', async () => {
+    const app = appFor(tenantOn('byod'));
+    for (let i = 1; i <= 5; i++) await addStaff(app, i);
+    mem.locks = [];
+    expect((await addStaff(app, 6)).status).toBe(403); // staff: the early look refuses it, before hashing anything
+    expect((await post(app, '/branches', { name: 'Second' })).status).toBe(403); // branches: likewise
+    expect(mem.locks).toEqual([]);
+  });
+
+  it('everything inside the lock goes through the transaction itself, not the shared pool', async () => {
+    // A read on another connection while holding the lock ties up two connections per request,
+    // which can starve the pool when requests queue behind one another.
+    const app = appFor(tenantOn('standard'));
+    mem.users.push({ id: 'gone', role: 'cashier', name: 'Gone', deletedAt: new Date() });
+    const routes: [string, () => Response | Promise<Response>][] = [
+      ['add staff', () => addStaff(app, 1)],
+      ['pair a till', () => pair(app, BRANCH_A)],
+      ['open the till', () => post(app, '/onboarding/till')],
+      ['add a branch', () => post(app, '/branches', { name: 'Another' })],
+      ['reactivate staff', () => post(app, '/staff/gone/restore')],
+    ];
+    for (const [what, go] of routes) {
+      mem.calls = [];
+      expect((await go()).status, what).toBeLessThan(300);
+      const inside = mem.calls.slice(mem.calls.indexOf('lock') + 1);
+      expect(inside.length, what).toBeGreaterThan(0);
+      expect(inside.every((c) => c.startsWith('tx:')), what + ': ' + inside.join(', ')).toBe(true);
+    }
+  });
+
+  it('each add takes the lock on ITS OWN business', async () => {
+    const other = { ...tenantOn('standard'), id: 't2' };
+    await addStaff(appFor(tenantOn('byod')), 1);
+    await post(appFor(other), '/branches', { name: 'Another' });
+    expect(mem.locks).toEqual(['t1', 't2']);
   });
 });
