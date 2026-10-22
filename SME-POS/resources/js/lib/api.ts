@@ -494,12 +494,19 @@ export const api = {
             }[];
             /** Set for a Standard/Premium plan that owes monthly maintenance; null otherwise. */
             maintenance: { amountCents: number; plan: string; paidThrough: string } | null;
+            /** Payments started in the last two days that Paynow hasn't confirmed (yet). */
+            pending: number;
             /** The ways to pay ahead (BYOD and maintenance): months covered, and months actually charged. */
             prepay: { months: number; billedMonths: number }[];
             access: AccessInfo;
         }>('/billing/payments'),
         /** Starts a Paynow payment for the plan; the server prices it. `months` only counts for BYOD, which can be paid ahead. */
         subscribe: (plan: string, months = 1) => post<{ redirectUrl: string }>('/billing/payments/subscribe', { plan, months }),
+        /**
+         * Asks Paynow about recent unconfirmed payments and activates any that were paid — for when its
+         * confirmation never arrived. Safe to call at any time.
+         */
+        check: () => post<{ checked: number; activated: number; unreachable: number }>('/billing/payments/check'),
         /** Starts a Paynow payment for `months` of maintenance on the current Standard/Premium plan. */
         payMaintenance: (months = 1) => post<{ redirectUrl: string }>('/billing/payments/maintenance', { months }),
     },

@@ -36,13 +36,14 @@ type PlanDef = { features: string[]; branches: number | null; tillsPerBranch: nu
 
 const PLANS: Record<string, PlanDef> = {
   byod: {
-    features: ['Unlimited products', 'Offline POS'],
+    // Tasks is open to every plan. Reports (Analytics) is not: BYOD sells and keeps stock, nothing more.
+    features: ['Unlimited products', 'Offline POS', 'Tasks'],
     branches: 1,
     tillsPerBranch: 1,
     staff: 5,
   },
   standard: {
-    features: ['Unlimited products', 'Offline POS', 'Multiple branches', 'Analytics', 'AI insights'],
+    features: ['Unlimited products', 'Offline POS', 'Tasks', 'Multiple branches', 'Analytics', 'AI insights'],
     branches: 5,
     tillsPerBranch: 2,
     staff: 15,
@@ -51,6 +52,7 @@ const PLANS: Record<string, PlanDef> = {
     features: [
       'Unlimited products',
       'Offline POS',
+      'Tasks',
       'Multiple branches',
       'Analytics',
       'Payroll & HR',
@@ -65,6 +67,7 @@ const PLANS: Record<string, PlanDef> = {
     features: [
       'Unlimited products',
       'Offline POS',
+      'Tasks',
       'Multiple branches',
       'Analytics',
       'Payroll & HR',
@@ -157,7 +160,7 @@ export type AccessSummary = {
   /** The upkeep fee, for plans that pay one. */
   maintenanceFeeCents: number | null;
   /** Which gated features the plan includes — the dashboard locks the rest in its menu. */
-  features: { aiInsights: boolean; payroll: boolean; fiscalisation: boolean };
+  features: { analytics: boolean; aiInsights: boolean; payroll: boolean; fiscalisation: boolean };
 };
 
 /** Everything the dashboard needs to explain a payment block, a countdown, or a locked menu item. */
@@ -175,6 +178,7 @@ export function accessSummary(tenant: TenantForEntitlement, now: Date = new Date
     daysLeft: !blocked && endsAt ? Math.max(0, Math.ceil((endsAt.getTime() - now.getTime()) / 86_400_000)) : null,
     maintenanceFeeCents: kind === 'maintenance' ? maintenanceFeeCents(tenant.plan) : null,
     features: {
+      analytics: hasFeature(tenant, 'analytics', now),
       aiInsights: hasFeature(tenant, 'ai insights', now),
       payroll: hasFeature(tenant, 'payroll', now),
       fiscalisation: hasFeature(tenant, 'fiscalisation', now),

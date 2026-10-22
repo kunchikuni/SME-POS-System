@@ -26,6 +26,13 @@ function dashboardFor(tenant: TenantForEntitlement) {
   dashboard.get('/products', (c) => c.json({ ok: true })); // an ungated page registered earlier
   dashboard.get('/settings/general', (c) => c.json({ ok: true }));
 
+  // Reports: Standard and Premium. (Tasks have no gate -- they are on every plan.)
+  const analytics = new Hono();
+  analytics.use('/analytics/*', requireFeature('analytics') as any);
+  analytics.route('/analytics', ok);
+  dashboard.route('/', analytics);
+  dashboard.get('/tasks', (c) => c.json({ ok: true }));
+
   const aiInsights = new Hono();
   aiInsights.use('/ai-insights/*', requireFeature('ai insights') as any);
   aiInsights.route('/ai-insights', ok);
@@ -50,6 +57,16 @@ const hit = async (tenant: TenantForEntitlement, path: string, method = 'GET') =
 };
 
 describe('feature gates, as mounted on the dashboard', () => {
+  it('Reports open for Standard and Premium; BYOD is refused by name; Tasks open for BYOD', async () => {
+    expect((await hit(paid('standard'), '/analytics')).status).toBe(200);
+    expect((await hit(paid('premium'), '/analytics')).status).toBe(200);
+    const byod = await hit(paid('byod'), '/analytics');
+    expect(byod.status).toBe(403);
+    expect(byod.body).toMatchObject({ code: 'plan_upgrade_required', feature: 'analytics', plan: 'byod' });
+    expect((await hit(paid('byod'), '/analytics/anything')).status).toBe(403);
+    expect((await hit(paid('byod'), '/tasks')).status).toBe(200);
+  });
+
   it('Standard: AI Insights opens; Payroll and Fiscalisation each name THEMSELVES when refused', async () => {
     expect((await hit(paid('standard'), '/ai-insights')).status).toBe(200);
 

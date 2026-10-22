@@ -106,6 +106,9 @@ export default function PaymentsSettings() {
     const timer = setInterval(async () => {
       attempts++;
       try {
+        // Paynow's confirmation normally arrives on its own, but it can be lost on the way
+        // (it can't reach a dev machine, a deploy drops it). Every third look, ask Paynow directly.
+        if (attempts % 3 === 1) await api.billing.check().catch(() => undefined);
         const fresh = await api.billing.get();
         if (stopped) return;
         // Landed = a paid period that wasn't there before — and, if the page opened
@@ -159,6 +162,28 @@ export default function PaymentsSettings() {
     { onSuccess: goToPaynow, onError: (err) => showFlash(err.message, "error") },
   );
 
+  // "I've paid — check": for a payment that was made but never showed up here.
+  const [checking, setChecking] = useState(false);
+  async function checkPayment() {
+    setChecking(true);
+    try {
+      const result = await api.billing.check();
+      setLive(await api.billing.get());
+      if (result.activated > 0) {
+        showFlash("Payment confirmed — thank you.");
+        void refetchAuthRef.current(); // so the menu and banner unlock too
+      } else if (result.unreachable > 0) {
+        showFlash("We couldn't reach Paynow just now. Try again in a minute.", "error");
+      } else {
+        showFlash("Paynow hasn't confirmed that payment yet. If you've just paid, give it a minute and check again.", "error");
+      }
+    } catch (err) {
+      showFlash(err instanceof Error ? err.message : "Couldn't check the payment.", "error");
+    } finally {
+      setChecking(false);
+    }
+  }
+
   if (loading) {
     return (
       <AppLayout>
@@ -192,6 +217,22 @@ export default function PaymentsSettings() {
           <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
             You're on a free trial until {new Date(view.trialEndsAt).toLocaleDateString()}. Choose a plan any
             time to keep going after it ends.
+          </div>
+        )}
+
+        {(view?.pending ?? 0) > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            <p className="min-w-0 flex-1">
+              <span className="font-semibold">Started a payment that hasn't shown up?</span> It normally appears
+              within a minute of paying. If you've paid and it's still missing, check it with Paynow now.
+            </p>
+            <button
+              onClick={() => void checkPayment()}
+              disabled={checking}
+              className="rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-50"
+            >
+              {checking ? "Checking…" : "Check my payment"}
+            </button>
           </div>
         )}
 

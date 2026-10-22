@@ -54,6 +54,7 @@ import { ensureSubscribed } from './middleware/ensureSubscribed.js';
 import { startBillingReminders } from './domain/billing/reminders.js';
 import { ensureDeviceSubscribed } from './middleware/ensureDeviceSubscribed.js';
 import { requireFeature } from './middleware/requireFeature.js';
+import { appKeyProblem } from './lib/appKey.js';
 
 // ── Route modules ─────────────────────────────────────────────────────────────
 import { authRoutes, registerRoutes } from './routes/auth.js';
@@ -112,21 +113,9 @@ if (process.env.NODE_ENV === 'production') {
     if (missing.length > 0) {
         throw new Error(`Missing required environment variables: ${missing.join(', ')} — refusing to start.`);
     }
-    if (!APP_KEY || APP_KEY.length < 32) {
-        throw new Error('APP_KEY must be set (≥32 chars) in production — refusing to start.');
-    }
-    // APP_KEY encrypts every session cookie AND signs the sign-up hand-off
-    // links, so anyone who knows it can forge a login as any user. The example
-    // value shipped in .env.example ("change-me-to-a-32-character-random-
-    // string!!") is 43 characters — it sailed through the length check above —
-    // so also refuse placeholders and keys that are obviously not random.
-    const placeholder = /change[-_ ]?me|dev-only|example|placeholder|your[-_ ]?(key|secret)|secret|password|123456|qwerty/i;
-    if (placeholder.test(APP_KEY) || new Set(APP_KEY).size < 12) {
-        throw new Error(
-            'APP_KEY looks like a placeholder, not a random key — refusing to start. ' +
-            "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"",
-        );
-    }
+    // Too short, a placeholder, or obviously not random (lib/appKey.ts says why it matters).
+    const keyProblem = appKeyProblem(APP_KEY);
+    if (keyProblem) throw new Error(keyProblem);
 }
 
 // Global middleware
@@ -341,7 +330,6 @@ dashboard.use('*', requireAuth);
 dashboard.use('*', ensureSubscribed);
 
 dashboard.route('/dashboard', dashboardRoutes);
-dashboard.route('/analytics', analyticsRoutes);
 dashboard.route('/products', productRoutes);
 dashboard.route('/products', importRoutes);
 dashboard.route('/products', importTemplateRoutes);
@@ -376,6 +364,13 @@ dashboard.route('/billing', billingRoutes);
 // payroll gate used to also run on /settings/fiscalisation, and a Standard
 // business opening Fiscalisation was told "Payroll isn't on your plan" (and one
 // with the ZIMRA add-on but not Premium was blocked outright).
+// Reports are Standard and Premium. (Tasks, by contrast, are open to every plan
+// and are mounted above, ungated.)
+const analytics = new Hono<{ Variables: HonoVars }>();
+analytics.use('/analytics/*', requireFeature('analytics'));
+analytics.route('/analytics', analyticsRoutes);
+dashboard.route('/', analytics);
+
 const aiInsights = new Hono<{ Variables: HonoVars }>();
 aiInsights.use('/ai-insights/*', requireFeature('ai insights'));
 aiInsights.route('/ai-insights', aiInsightsRoutes);

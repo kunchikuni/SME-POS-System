@@ -25,6 +25,12 @@ const FEATURES: Record<string, { title: string; blurb: string; availableOn: stri
       "Submit sales to ZIMRA automatically and print compliant receipts with the QR code and verification details on every sale.",
     availableOn: "Premium",
   },
+  analytics: {
+    title: "Reporting",
+    blurb:
+      "See revenue over time, your best-selling products and how customers pay — for any stretch from a week to a year.",
+    availableOn: "Standard and Premium",
+  },
   "ai insights": {
     title: "AI Insights",
     blurb:

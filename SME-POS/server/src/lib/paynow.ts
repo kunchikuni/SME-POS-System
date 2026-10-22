@@ -158,6 +158,38 @@ export async function initiateTransaction(input: InitiateInput): Promise<Initiat
   };
 }
 
+/** Is this a Paynow address? A poll URL comes out of Paynow's own (hash-verified) reply, but it is still fetched by our server, so it only ever goes to Paynow. */
+function isPaynowUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    return u.protocol === 'https:' && (u.hostname === 'paynow.co.zw' || u.hostname.endsWith('.paynow.co.zw'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Asks Paynow where one payment stands, using the pollUrl it gave when the
+ * payment was started. The answer is the same message the webhook carries (status,
+ * reference, ...) and is hash-verified the same way -- a forged answer can no
+ * more mark a payment paid than a forged webhook can.
+ *
+ * This is the fallback for a webhook that never arrived; see
+ * domain/billing/activation.ts. It throws if Paynow can't be reached or the
+ * answer doesn't verify, so the caller can leave the payment pending and retry.
+ */
+export async function pollTransaction(pollUrl: string): Promise<{ status: string; reference: string | null }> {
+  if (!INTEGRATION_KEY) throw new PaynowNotConfiguredError();
+  if (!isPaynowUrl(pollUrl)) throw new Error('Refusing to poll a URL that is not Paynow\'s.');
+
+  const res = await fetch(pollUrl, { method: 'POST', signal: AbortSignal.timeout(15_000) });
+  if (!res.ok) throw new Error(`Paynow poll request failed: HTTP ${res.status}`);
+
+  const parsed = parseFormResponse(await res.text());
+  verifyHash(parsed, 'poll response');
+  return { status: parsed.status ?? '', reference: parsed.reference ?? null };
+}
+
 /** True if a Paynow status string means money has actually been received.
  *  "Awaiting Delivery" is included deliberately: for a physical-goods
  *  integration it means "paid, not yet marked shipped," but for a digital

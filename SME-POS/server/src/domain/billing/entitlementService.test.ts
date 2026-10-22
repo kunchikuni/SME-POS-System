@@ -18,6 +18,19 @@ const paid = (plan: string, periodEndsInDays: number | null, zimraAddon = false)
 });
 
 describe('plan features', () => {
+  it('Reports (analytics) are Standard and Premium, not BYOD', () => {
+    expect(hasFeature(paid('standard', null), 'analytics')).toBe(true);
+    expect(hasFeature(paid('premium', null), 'analytics')).toBe(true);
+    expect(hasFeature(paid('byod', 20), 'analytics')).toBe(false);
+    expect(hasFeature(paid('byod', 20), 'ai insights')).toBe(false); // 'AI insights' must not satisfy the analytics check, or the other way round
+    expect(hasFeature(trial(3), 'analytics')).toBe(true);
+    expect(hasFeature(trial(-1), 'analytics')).toBe(false);
+  });
+
+  it('Tasks are on every plan', () => {
+    for (const plan of ['byod', 'standard', 'premium']) expect(hasFeature(paid(plan, 20), 'tasks')).toBe(true);
+  });
+
   it('AI Insights is a Standard feature (and Premium), not BYOD', () => {
     expect(hasFeature(paid('standard', null), 'ai insights')).toBe(true);
     expect(hasFeature(paid('premium', null), 'ai insights')).toBe(true);
@@ -207,7 +220,7 @@ describe('accessSummary — what the dashboard is told', () => {
   it('counts down a running trial and unlocks everything', () => {
     const s = accessSummary(trial(3));
     expect(s).toMatchObject({ blocked: false, kind: 'trial', daysLeft: 3, maintenanceFeeCents: null });
-    expect(s.features).toEqual({ aiInsights: true, payroll: true, fiscalisation: true });
+    expect(s.features).toEqual({ analytics: true, aiInsights: true, payroll: true, fiscalisation: true });
   });
 
   it('rounds a part-day up, so the last day still reads "1 day left"', () => {
@@ -235,9 +248,9 @@ describe('accessSummary — what the dashboard is told', () => {
   });
 
   it('reports which gated features each plan has, so the menu can lock the rest', () => {
-    expect(accessSummary(paid('byod', 9)).features).toEqual({ aiInsights: false, payroll: false, fiscalisation: false });
-    expect(accessSummary(paid('standard', 9)).features).toEqual({ aiInsights: true, payroll: false, fiscalisation: false });
-    expect(accessSummary(paid('premium', 9)).features).toEqual({ aiInsights: true, payroll: true, fiscalisation: true });
+    expect(accessSummary(paid('byod', 9)).features).toEqual({ analytics: false, aiInsights: false, payroll: false, fiscalisation: false });
+    expect(accessSummary(paid('standard', 9)).features).toEqual({ analytics: true, aiInsights: true, payroll: false, fiscalisation: false });
+    expect(accessSummary(paid('premium', 9)).features).toEqual({ analytics: true, aiInsights: true, payroll: true, fiscalisation: true });
   });
 
   it('agrees with hasAccess on whether the dashboard is shut', () => {
@@ -256,6 +269,7 @@ describe('ensureSubscribed — the dashboard routes', () => {
     app.get('/api/billing/payments', (c) => c.json({ ok: true }));
     app.post('/api/billing/payments/subscribe', (c) => c.json({ ok: true }));
     app.post('/api/billing/payments/maintenance', (c) => c.json({ ok: true }));
+    app.post('/api/billing/payments/check', (c) => c.json({ ok: true }));
     return app;
   };
 
@@ -289,6 +303,7 @@ describe('ensureSubscribed — the dashboard routes', () => {
     expect((await app.request('/api/billing/payments')).status).toBe(200);
     expect((await app.request('/api/billing/payments/subscribe', { method: 'POST' })).status).toBe(200);
     expect((await app.request('/api/billing/payments/maintenance', { method: 'POST' })).status).toBe(200);
+    expect((await app.request('/api/billing/payments/check', { method: 'POST' })).status).toBe(200); // "I've paid — check"
   });
 });
 

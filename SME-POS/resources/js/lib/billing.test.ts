@@ -13,7 +13,7 @@ const access = (over: Partial<AccessInfo> = {}): AccessInfo => ({
   endsAt: iso(20),
   daysLeft: 20,
   maintenanceFeeCents: 700,
-  features: { aiInsights: true, payroll: false, fiscalisation: false },
+  features: { analytics: true, aiInsights: true, payroll: false, fiscalisation: false },
   ...over,
 });
 
@@ -81,6 +81,8 @@ describe("isFeatureLocked — the plan-gated menu items", () => {
   it("locks what the plan lacks and leaves the rest open", () => {
     const standard = access();
     expect(isFeatureLocked(standard, "aiInsights")).toBe(false);
+    expect(isFeatureLocked(standard, "analytics")).toBe(false);
+    expect(isFeatureLocked(access({ features: { analytics: false, aiInsights: false, payroll: false, fiscalisation: false } }), "analytics")).toBe(true); // BYOD
     expect(isFeatureLocked(standard, "payroll")).toBe(true);
     expect(isFeatureLocked(standard, "fiscalisation")).toBe(true);
   });

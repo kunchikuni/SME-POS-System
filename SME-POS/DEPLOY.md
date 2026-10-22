@@ -147,6 +147,21 @@ The development database does not currently have the RLS files applied.
 
 ## 4. After it is live
 
+- **Run the preflight.** `npm run preflight --workspace=server` checks the
+  server's settings and the database they point at against this guide, and
+  prints what is wrong with the command that fixes it. Several mistakes here fail
+  *quietly* and it finds them: Row Level Security not applied (tenant data
+  readable through Supabase's public API), the old plain unique index on login
+  email (a business can have only one cashier), `BILLING_REMINDERS` off (owners
+  locked out with no warning), `EMAIL_FROM` still the `wivae.test` placeholder
+  (mail is rejected), Paynow credentials missing, a transaction-pooler
+  `DATABASE_URL`, a weak `APP_KEY`, a mismatched `TENANT_DOMAIN` /
+  `VITE_TENANT_DOMAIN`. It only reads, never prints a secret, and exits 1 if
+  anything must be fixed. It reads `server/.env` (don't commit one holding
+  production values); on the host it is `node dist/preflight.js`, and with the
+  Railway CLI `railway run npm run preflight --workspace=server` runs it with the
+  service's own variables. It also names the database host it connected to —
+  confirm that is the production project and not the development one.
 - **Smoke test** on a throwaway business: sign up on `app.wivae.com` →
   you're handed to `<shop>.wivae.com` → add a product → open the till,
   connect it with a PIN → make a cash sale and a credit sale → refresh
@@ -166,6 +181,8 @@ The development database does not currently have the RLS files applied.
 Paynow is wired up (`server/src/lib/paynow.ts`, `server/src/routes/billing.ts`)
 but has **not** been exercised against Paynow end to end. Before relying on it,
 make a real small test payment and confirm the plan activates.
+
+Paynow confirms a payment by calling `/api/billing/webhook` on the business's own address (so it needs your public https domain, `APP_SCHEME` and `TENANT_DOMAIN` set), and the Payments page also asks Paynow directly (`POST /api/billing/payments/check`) — the owner sees a "Check my payment" button whenever a payment hasn't been confirmed. That fallback is what makes a payment work on a machine Paynow can't reach, such as local development, and it covers a webhook that is lost in production.
 
 Paynow's core API is a single-payment flow, not native recurring billing.
 Standard/Premium are bought once (hardware and the first month included), then
@@ -209,6 +226,11 @@ Verified in this repository before writing this guide:
   was prepared). The first Railway build is the first real build.
 - Real Paynow payments, wildcard DNS/TLS, and the marketing site's forms
   against a deployed API.
+- The preflight has been run against the development environment (where it
+  correctly reports no RLS, development businesses and a non-production
+  `NODE_ENV`) and its checks are unit-tested, but it has never seen a real
+  production environment. `railway run …` is the Railway CLI's documented way
+  to run a command with a service's variables; it has not been tried here.
 - Till installation as an app, the "update available" notice, receipt
   printing and barcode scanning on real hardware.
 - Latency from Railway to Supabase in production. During development,

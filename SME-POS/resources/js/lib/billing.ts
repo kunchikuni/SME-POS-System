@@ -19,7 +19,7 @@ export interface AccessInfo {
   /** Whole days left while access is open; null once ended or with no end date. */
   daysLeft: number | null;
   maintenanceFeeCents: number | null;
-  features: { aiInsights: boolean; payroll: boolean; fiscalisation: boolean };
+  features: { analytics: boolean; aiInsights: boolean; payroll: boolean; fiscalisation: boolean };
 }
 
 export const PAYMENTS_PATH = "/settings/payments";

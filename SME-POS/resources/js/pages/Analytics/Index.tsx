@@ -1,4 +1,5 @@
 import AppLayout from "../../Layouts/AppLayout.js";
+import UpgradeRequired from "../../Components/UpgradeRequired.js";
 import { usePageTitle, useQuery } from "../../lib/hooks.js";
 import { api } from "../../lib/api.js";
 import { useState } from "react";
@@ -9,13 +10,23 @@ const SLICE_COLORS = ["#7c3aed", "#059669", "#d97706", "#dc2626", "#4f46e5", "#0
 export default function AnalyticsIndex() {
   usePageTitle("Analytics");
   const [range, setRange] = useState(30);
-  const { data, loading } = useQuery(() => api.analytics.overview(range), [range]);
+  const { data, loading, errorInfo } = useQuery(() => api.analytics.overview(range), [range]);
 
   const salesByDay = (data?.salesByDay ?? []) as { date: string; total_cents: number; count: number }[];
   const topProducts = (data?.topProducts ?? []) as { name: string; revenue: number; units_sold: number }[];
   const paymentMethods = (data?.paymentMethods ?? []) as { method: string; _sum: { amountCents: number }; _count: number }[];
   const totalRevenue = salesByDay.reduce((s, d) => s + (d.total_cents ?? 0), 0);
   const maxRevenue = Math.max(1, ...salesByDay.map(d => d.total_cents ?? 0));
+
+  // BYOD has no Reports: the server answers 403 with no data. Say so, rather than
+  // draw "No sales in this period" as though the report had run.
+  if (!loading && errorInfo?.code === "plan_upgrade_required") {
+    return (
+      <AppLayout>
+        <UpgradeRequired feature={errorInfo.feature ?? "analytics"} plan={errorInfo.plan} />
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>

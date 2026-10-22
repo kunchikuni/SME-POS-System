@@ -29,6 +29,7 @@ const EXEMPT_SUFFIXES = [
   '/billing/payments',
   '/billing/payments/subscribe',
   '/billing/payments/maintenance',
+  '/billing/payments/check',
   '/logout',
 ];
 

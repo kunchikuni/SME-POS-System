@@ -2,6 +2,7 @@ import AppLayout from "../../Layouts/AppLayout.js";
 import { usePageTitle, useQuery } from "../../lib/hooks.js";
 import { useAuth } from "../../lib/auth.js";
 import { api } from "../../lib/api.js";
+import { isFeatureLocked } from "../../lib/billing.js";
 import { Link, useSearchParams } from "react-router-dom";
 import { GetSelling } from "./GetSelling.js";
 
@@ -15,7 +16,12 @@ export default function DashboardIndex() {
   const [searchParams] = useSearchParams();
 
   const { data: summary, loading } = useQuery(() => api.dashboard.summary(), []);
-  const { data: analytics } = useQuery(() => api.analytics.overview(7), []);
+  // The week's revenue chart is a Reports feature; a plan without Reports doesn't ask for it.
+  const reportsLocked = isFeatureLocked(tenant?.access, "analytics");
+  const { data: analytics } = useQuery(
+    () => (reportsLocked ? Promise.resolve(null) : api.analytics.overview(7)),
+    [reportsLocked],
+  );
 
   const trend = (analytics?.salesByDay ?? []) as { date: string; total_cents: number; count: number }[];
   const maxRevenue = Math.max(1, ...trend.map((t) => t.total_cents ?? 0));
@@ -52,7 +58,14 @@ export default function DashboardIndex() {
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section className="rounded-xl border border-hairline bg-surface p-5">
           <h2 className="mb-4 text-sm font-medium text-muted">Revenue This Week</h2>
-          {trend.every((t) => (t.total_cents ?? 0) === 0) || trend.length === 0 ? (
+          {reportsLocked ? (
+            <p className="grid h-40 place-items-center px-4 text-center text-sm text-muted">
+              <span>
+                Revenue over time and full reports come with Standard and Premium.{" "}
+                <Link to="/settings/payments" className="font-medium text-brand-600 hover:underline">See plans</Link>
+              </span>
+            </p>
+          ) : trend.every((t) => (t.total_cents ?? 0) === 0) || trend.length === 0 ? (
             <EmptyChart label="No sales yet this week." />
           ) : (
             <div className="flex h-40 items-end gap-1.5">

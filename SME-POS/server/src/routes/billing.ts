@@ -38,10 +38,11 @@ import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db } from '../lib/db.js';
-import { initiateTransaction, verifyHash, isPaidStatus, PaynowNotConfiguredError } from '../lib/paynow.js';
+import { initiateTransaction, pollTransaction, verifyHash, isPaidStatus, PaynowNotConfiguredError } from '../lib/paynow.js';
+import { PENDING_WINDOW_MS, activatePayment, paidSubscription } from '../domain/billing/activation.js';
 import { accessSummary, planLimits } from '../domain/billing/entitlementService.js';
 import {
-  PREPAY_OPTIONS, billedMonths, freeMonths, maintenanceFeeCents, monthsFromReference, nextPeriodEnd, paysMaintenance,
+  PREPAY_OPTIONS, billedMonths, freeMonths, maintenanceFeeCents, paysMaintenance,
 } from '../domain/billing/maintenance.js';
 import { PLAN_PRICES, usd } from '../domain/billing/pricing.js';
 import type { HonoVars } from '../lib/context.js';
@@ -59,13 +60,6 @@ const monthsSchema = z
   .default(1);
 
 /**
- * What the dashboard's Payments page shows — sent with GET /payments so the
- * page can't drift from what's actually charged. (It used to hardcode its
- * own "Growth"/"Scale" plans the server didn't recognise, so choosing one
- * failed at payment.) Feature wording mirrors the marketing page; branch
- * limits mirror entitlementService.ts.
- */
-/**
  * The till and staff lines of a plan card, worked out from the limits the routes
  * enforce (entitlementService.ts PLANS) so the card can't promise what the
  * server won't allow.
@@ -77,24 +71,33 @@ function limitLines(plan: string): string[] {
   return [tills, `${staff} staff accounts`];
 }
 
+/**
+ * What the dashboard's Payments page shows — sent with GET /payments so the
+ * page can't drift from what's actually charged. (It used to hardcode its
+ * own "Growth"/"Scale" plans the server didn't recognise, so choosing one
+ * failed at payment.) Feature wording mirrors the marketing page — a test
+ * (billing.test.ts) fails if the two stop matching, so change both together;
+ * branch limits mirror entitlementService.ts.
+ */
 const PLAN_DISPLAY: Record<string, { label: string; branches: number | null; features: string[] }> = {
   byod: {
     label: 'BYOD', branches: 1,
-    features: [...limitLines('byod'), 'Inventory', 'Basic reports', 'Offline first', 'Cloud synchronization', 'Support'],
+    features: [...limitLines('byod'), 'Inventory', 'Tasks', 'Offline first', 'Cloud synchronization', 'Support'],
   },
   standard: {
     label: 'Standard', branches: 5,
-    features: ['Everything in BYOD', ...limitLines('standard'), '10" Android tablet + Bluetooth thermal printer included', 'Implementation training included', 'AI Insights', 'Task management'],
+    features: ['Everything in BYOD', ...limitLines('standard'), '10" Android tablet + Bluetooth thermal printer included', 'Implementation training included', 'Configured, ready to go', 'Reports & analytics', 'AI Insights'],
   },
   premium: {
     label: 'Premium', branches: null,
-    features: ['Everything in Standard', ...limitLines('premium'), '12" Android tablet (upgraded)', 'Payroll & HR', 'ZIMRA Fiscalisation included', 'Priority support'],
+    features: ['Everything in Standard', ...limitLines('premium'), '12" Android tablet (upgraded)', 'Payroll & HR', 'ZIMRA Fiscalisation included', 'Priority support', 'Ongoing training & implementation planning'],
   },
 };
 
-/** The plan the business has actually paid for: its latest paid (active) subscription of that plan. */
-const paidSubscription = (plan: string) =>
-  db.subscription.findFirst({ where: { plan, status: 'active' }, orderBy: { createdAt: 'desc' } });
+/** Payments started in the last two days that Paynow hasn't confirmed to us (yet): worth asking it about. */
+const recentPending = () => ({
+  status: 'trialing', pollUrl: { not: null }, createdAt: { gte: new Date(Date.now() - PENDING_WINDOW_MS) },
+});
 
 billingRoutes.get('/payments', async (ctx) => {
   const t = ctx.get('tenant');
@@ -122,12 +125,16 @@ billingRoutes.get('/payments', async (ctx) => {
       ? { amountCents: maintenanceFeeCents(t.plan)!, plan: t.plan, paidThrough: subscription.currentPeriodEnd }
       : null;
 
+  // Started a payment, and nothing has confirmed it: the page offers "check my payment".
+  const pending = await db.subscription.count({ where: recentPending() });
+
   return ctx.json({
     subscription,
     plan: t.plan,
     trialEndsAt: t.trialEndsAt,
     plans,
     maintenance,
+    pending,
     /** The ways to pay ahead (BYOD and maintenance): months covered, and months actually charged. */
     prepay: PREPAY_OPTIONS.map((months) => ({ months, billedMonths: billedMonths(months) })),
     access: accessSummary(t as any),
@@ -265,6 +272,37 @@ billingRoutes.post('/payments/maintenance', async (ctx) => {
   });
 });
 
+// POST /billing/payments/check -- ask Paynow directly about this business's recent
+// unconfirmed payments, and activate any that were paid. For when the webhook
+// didn't arrive (Paynow can't reach a dev machine, a deploy dropped it): a business
+// that has paid must not stay locked out because a message got lost. It does exactly
+// what the webhook does, so it is safe to call at any time and as often as you like.
+billingRoutes.post('/payments/check', async (ctx) => {
+  const user = ctx.get('user');
+  if (!ADMIN_ROLES.has(user.role)) return ctx.json({ message: 'Forbidden.' }, 403);
+
+  // Oldest first, so two paid payments extend the period in the order they were made.
+  const pending = await db.subscription.findMany({ where: recentPending(), orderBy: { createdAt: 'asc' }, take: 3 });
+
+  let activated = 0;
+  let unreachable = 0;
+  for (const payment of pending) {
+    try {
+      const answer = await pollTransaction(payment.pollUrl!);
+      // An answer about some other payment is not an answer about this one.
+      if (answer.reference && answer.reference !== payment.providerRef) continue;
+      if (isPaidStatus(answer.status) && (await activatePayment(payment))) activated++;
+    } catch (err) {
+      if (err instanceof PaynowNotConfiguredError) {
+        return ctx.json({ message: 'Payments are not configured yet. Contact support.' }, 503);
+      }
+      unreachable++;
+      console.warn('Paynow check failed for', payment.providerRef, err instanceof Error ? err.message : err);
+    }
+  }
+  return ctx.json({ checked: pending.length, activated, unreachable });
+});
+
 // POST /billing/webhook -- Paynow's resultUrl target. Mounted unauthenticated
 // (see class docblock) -- this is an external POST from Paynow's own
 // servers, which can never present a session cookie.
@@ -301,36 +339,9 @@ billingWebhookRoutes.post('/webhook', async (ctx) => {
     return ctx.json({ message: 'Acknowledged.' }, 200);
   }
 
-  // Paynow sends more than one "paid" message for a payment (Paid, then
-  // Awaiting Delivery / Delivered) and retries. Each payment may extend the
-  // period only ONCE, or a single payment would buy several months.
-  if (subscription.status === 'active') {
-    return ctx.json({ message: 'Acknowledged.' }, 200);
-  }
-
-  // Every payment buys 30-day periods -- one, or as many months as the
-  // reference says (BYOD and maintenance can be paid ahead). A maintenance
-  // payment (and a BYOD renewal) continues from the end of the period already
-  // paid for, so paying early loses nothing; a plan bought for the first time
-  // starts today -- for Standard/Premium that is the "first month included".
-  const isMaintenance = subscription.providerRef?.startsWith('maint_') ?? false;
-  const continuing = isMaintenance || subscription.plan === 'byod';
-  const previous = continuing ? await paidSubscription(subscription.plan) : null;
-  const months = continuing ? monthsFromReference(subscription.providerRef) : 1;
-  const currentPeriodEnd = nextPeriodEnd(new Date(), previous?.currentPeriodEnd, months);
-
-  await db.$transaction(async (tx) => {
-    // Claim the row: if a concurrent delivery already activated it, do nothing.
-    const claimed = await tx.subscription.updateMany({
-      where: { id: subscription.id, status: { not: 'active' } },
-      data: { status: 'active', currentPeriodEnd },
-    });
-    if (claimed.count === 0) return;
-    await tx.tenant.update({
-      where: { id: subscription.tenantId },
-      data: { plan: subscription.plan },
-    });
-  });
+  // A repeated or concurrent "paid" message, or one the check already acted on,
+  // changes nothing: a payment buys its period once.
+  await activatePayment(subscription);
 
   return ctx.json({ message: 'Acknowledged.' }, 200);
 });
