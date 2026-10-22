@@ -193,6 +193,8 @@ Plan limits live in one table, `PLANS` in `server/src/domain/billing/entitlement
 
 Needs `PAYNOW_INTEGRATION_ID` / `PAYNOW_INTEGRATION_KEY` in `server/.env`.
 
+A payment is confirmed two ways, and both go through one function (`activatePayment`, `server/src/domain/billing/activation.ts`) that is safe to run twice or at once, so a payment buys its period exactly once (it takes a row lock on the business, then continues from the FURTHEST paid-through date and keeps the newest paid row showing it, so several payments confirmed together or out of order — an abandoned EcoCash prompt approved later — each add their months and none is lost): Paynow's webhook (`POST /api/billing/webhook`), and `POST /api/billing/payments/check`, which asks Paynow directly about the business's last two days of unconfirmed payments using the `pollUrl` stored when each was started (`pollTransaction` in `lib/paynow.ts`; the answer is hash-verified like the webhook, and only ever sent to a paynow.co.zw address). The second is the fallback for a lost webhook — Paynow cannot reach a dev machine, a deploy can drop its call — so a business that has paid is never left locked out: the Payments page asks Paynow itself while it waits after a payment, and offers a "Check my payment" button when one is unconfirmed.
+
 ### 9.2 ZIMRA fiscalisation — optional, offline-aware
 
 A plan-gated feature (Premium, or during the trial). Fiscalisation **cannot happen offline**: a sale completes and prints a provisional receipt, and the fiscal submission must queue and fire on sync, within ZIMRA's grace window (72 hours, per public guidance).
