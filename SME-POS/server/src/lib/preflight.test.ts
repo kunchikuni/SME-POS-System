@@ -17,6 +17,9 @@ const good = (): Record<string, string> => ({
   BILLING_REMINDERS: 'on',
   RESEND_API_KEY: 're_abc',
   EMAIL_FROM: 'Wivae <notifications@wivae.com>',
+  TWILIO_ACCOUNT_SID: 'AC1',
+  TWILIO_AUTH_TOKEN: 'tok',
+  TWILIO_FROM: '+15551234567',
   SUPABASE_URL: 'https://x.supabase.co',
   SUPABASE_SERVICE_KEY: 'svc',
 });
@@ -86,14 +89,23 @@ describe('checkEnvironment', () => {
     });
 
     it('on with no way to send is a failure', () => {
-      const none = { ...good(), RESEND_API_KEY: undefined, EMAIL_FROM: undefined };
+      const none = { ...good(), RESEND_API_KEY: undefined, EMAIL_FROM: undefined, TWILIO_ACCOUNT_SID: undefined, TWILIO_AUTH_TOKEN: undefined, TWILIO_FROM: undefined };
       expect(problem(none, /no email or SMS provider/)?.level).toBe('fail');
     });
 
-    it('email alone, or text alone, is enough', () => {
+    it('both channels set is clean; either alone is enough to send, but warns that the site promises both', () => {
       expect(levels(good())).toEqual([]);
-      const textOnly = { ...good(), RESEND_API_KEY: undefined, EMAIL_FROM: undefined, TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 't', TWILIO_FROM: '+15551234567' };
-      expect(levels(textOnly)).toEqual([]);
+      const emailOnly = { ...good(), TWILIO_ACCOUNT_SID: undefined, TWILIO_AUTH_TOKEN: undefined, TWILIO_FROM: undefined };
+      const textOnly = { ...good(), RESEND_API_KEY: undefined, EMAIL_FROM: undefined };
+      for (const [what, env] of [['email', emailOnly], ['text', textOnly]] as const) {
+        const found = levels(env);
+        expect(found, what).toHaveLength(1);
+        expect(found[0].level, what).toBe('warn'); // not a failure: reminders do go out
+        expect(found[0].message, what).toMatch(new RegExp(`by ${what} only`));
+        expect(found[0].message, what).toMatch(/promise/);
+        expect(found[0].fix, what).toMatch(what === 'email' ? /SMS_PROVIDER/ : /RESEND_API_KEY/); // the advice is about the channel that is MISSING
+        expect(isReady(checkEnvironment(env)), what).toBe(true);
+      }
     });
 
     it('an unset or placeholder EMAIL_FROM is a failure when email is on: the default sender is wivae.test', () => {
@@ -103,7 +115,7 @@ describe('checkEnvironment', () => {
     });
 
     it('half-set Twilio settings, and an unknown provider, are called out', () => {
-      expect(problem({ ...good(), TWILIO_ACCOUNT_SID: 'AC1' }, /Twilio settings are incomplete/)?.level).toBe('warn');
+      expect(problem({ ...good(), TWILIO_AUTH_TOKEN: undefined }, /Twilio settings are incomplete/)?.level).toBe('warn');
       expect(problem({ ...good(), SMS_PROVIDER: 'clickatell' }, /SMS_PROVIDER/)?.level).toBe('warn');
     });
   });

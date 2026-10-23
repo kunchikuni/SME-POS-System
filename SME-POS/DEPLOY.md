@@ -198,7 +198,7 @@ period ends, 2 days before the tills pause and when they do — and texts them
 production, or owners get no warning and are simply locked out when the period
 ends (tills after a grace of 14 days for Standard/Premium, 3 for BYOD and
 trials). Leave it off on a development database full of test businesses.
-Texts to Zimbabwe cost roughly $0.20 each through Twilio and $0.02–0.06 through
+The pricing page and the FAQ promise reminders "by email and text", so set up **both** channels before launch — or change that wording; `npm run preflight --workspace=server` warns while only one is set. Texts to Zimbabwe cost roughly $0.20 each through Twilio and $0.02–0.06 through
 local gateways, so budget for it (or add an adapter in `server/src/lib/sms.ts`).
 
 The job records each reminder in a `billing_reminders` table, and texts need

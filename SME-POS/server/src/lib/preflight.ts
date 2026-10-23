@@ -122,8 +122,14 @@ export function checkEnvironment(env: Env): Finding[] {
       'Set BILLING_REMINDERS=on and at least one of RESEND_API_KEY / the TWILIO_* settings.'));
   } else if (!email && !sms) {
     out.push(fail(A, 'BILLING_REMINDERS is on but no email or SMS provider is set, so no reminder can go out', 'Set RESEND_API_KEY (+ EMAIL_FROM) and/or SMS_PROVIDER with the TWILIO_* settings.'));
+  } else if (email && sms) {
+    out.push(ok(A, 'Billing reminders are on, by email and text'));
   } else {
-    out.push(ok(A, `Billing reminders are on (${[email && 'email', sms && 'text'].filter(Boolean).join(' and ')})`));
+    // The pricing page and FAQ promise reminders "by email and text" (marketing/src/components/Pricing.tsx, islands/FaqAccordion.tsx).
+    out.push(warn(A, `Billing reminders are on, but by ${email ? 'email' : 'text'} only: the pricing page and FAQ promise "by email and text", so owners are promised a ${email ? 'text' : 'email'} they will not get`,
+      email
+        ? 'Set SMS_PROVIDER and the TWILIO_* settings (owners also have to have given a mobile number), or change the wording on the pricing page and FAQ.'
+        : 'Set RESEND_API_KEY and EMAIL_FROM, or change the wording on the pricing page and FAQ.'));
   }
   if (!sms && twilioParts > 0) out.push(warn(A, 'The Twilio settings are incomplete, so texts will not be sent', 'Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM (or TWILIO_MESSAGING_SERVICE_SID).'));
   if (set(env.SMS_PROVIDER) && env.SMS_PROVIDER.toLowerCase() !== 'twilio') out.push(warn(A, `SMS_PROVIDER "${env.SMS_PROVIDER}" is not one this server knows (only "twilio")`, 'Use twilio, or add an adapter in server/src/lib/sms.ts.'));
