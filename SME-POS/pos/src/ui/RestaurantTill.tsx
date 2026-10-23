@@ -272,7 +272,7 @@ export function RestaurantTill({
     // note in RetailTill: a component declared inside the till remounts on
     // every render (lost focus, reset scroll in the order list).
     const renderCart = () => (
-        <div className="flex h-full flex-col dark-scroll">
+        <div className="flex h-full min-h-0 flex-col dark-scroll">
             {/* Cart header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
                 <div>
@@ -528,13 +528,15 @@ export function RestaurantTill({
                         onClick={() => setShowCartSheet(false)}
                     >
                         <div
-                            className="sidebar-resto max-h-[88vh] w-full rounded-t-3xl ring-1 ring-white/10 anim-slide-up"
+                            className="sidebar-resto max-h-[88dvh] w-full rounded-t-3xl ring-1 ring-white/10 anim-slide-up"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <div className="flex justify-center pt-3 pb-1">
                                 <div className="h-1 w-10 rounded-full bg-white/15" />
                             </div>
-                            <div className="max-h-[calc(88vh-24px)] overflow-y-auto dark-scroll">
+                            {/* A bounded column, not a scroller: the order lines scroll inside it and the
+                                payment area and charge button stay in view however long the order is. */}
+                            <div className="flex max-h-[calc(88dvh-24px)] flex-col">
                                 {renderCart()}
                             </div>
                         </div>

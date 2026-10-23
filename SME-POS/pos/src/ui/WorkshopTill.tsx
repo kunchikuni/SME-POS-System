@@ -75,6 +75,7 @@ export function WorkshopTill({
     const [saleError,    setSaleError]    = useState<string | null>(null);
     const [showPrinter,  setShowPrinter]  = useState(false);
     const [showTasks,    setShowTasks]    = useState(false);
+    const [showCartSheet, setShowCartSheet] = useState(false); // phone: the order, as a bottom sheet
     const [showReceiveStock,  setShowReceiveStock]  = useState(false);
     const [showRecordPayment, setShowRecordPayment] = useState(false);
     const credit = useCreditCustomer();
@@ -151,6 +152,7 @@ export function WorkshopTill({
     }
 
     function newOrder() {
+        setShowCartSheet(false);
         setLastSale(null);
         setCart(emptyCart);
         setMethod('cash');
@@ -163,8 +165,94 @@ export function WorkshopTill({
         return <Receipt sale={lastSale} device={device} cashierName={shift.cashierName} onDone={newOrder} />;
     }
 
+    // The order. Shown as a sidebar from `lg` up, and as a bottom sheet below that
+    // (a phone cannot spare 320px for it beside the product grid).
+    const renderCart = () => (
+        <>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+                <div>
+                    <h2 className="font-bold text-white tracking-tight">Job Card</h2>
+                    {itemCount > 0 && <p className="text-xs text-slate-400 mt-0.5">{itemCount} item{itemCount !== 1 ? 's' : ''}</p>}
+                </div>
+                {cart.lines.length > 0 && <button onClick={() => setCart(emptyCart)} className="text-xs text-slate-500 hover:text-red-400 transition-colors">Clear</button>}
+            </div>
+
+            {/* Workshop-specific fields */}
+            <div className="px-5 pt-3 pb-2 border-b border-white/8 space-y-2">
+                <div>
+                    <label className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Customer name</label>
+                    <input className="mt-1 w-full rounded-xl border border-white/8 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-violet-500/50" placeholder="e.g. Tariro Moyo" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                    <div>
+                        <label className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Job ref</label>
+                        <input className="mt-1 w-full rounded-xl border border-white/8 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-violet-500/50" placeholder="WS-001" value={jobRef} onChange={(e) => setJobRef(e.target.value)} />
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Asset / vehicle</label>
+                        <input className="mt-1 w-full rounded-xl border border-white/8 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-violet-500/50" placeholder="ABC 1234" value={assetDesc} onChange={(e) => setAssetDesc(e.target.value)} />
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-3 space-y-2">
+                {cart.lines.length === 0 ? (
+                    <div className="mt-10 flex flex-col items-center gap-3 text-center">
+                        <div className="h-14 w-14 rounded-2xl bg-white/5 flex items-center justify-center text-2xl ring-1 ring-white/8">🔩</div>
+                        <p className="text-sm text-slate-500">Add services or parts above</p>
+                    </div>
+                ) : (
+                    cart.lines.map((line) => (
+                        <div key={line.product.id} className="flex items-center gap-3 rounded-xl bg-white/5 px-3 py-2.5 ring-1 ring-white/6">
+                            <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-white truncate">{line.product.name}</div>
+                                <div className="text-xs text-slate-400 mt-0.5">{formatMoney(line.product.price_cents, line.product.currency)} ea.</div>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                                <button onClick={() => setCart((c) => setQty(c, line.product.id, line.qty - 1))} className="h-9 w-9 lg:h-6 lg:w-6 rounded-md bg-white/8 text-slate-300 text-xs font-bold flex items-center justify-center">−</button>
+                                <span className="w-5 text-center text-sm font-semibold text-white tabular-nums">{line.qty}</span>
+                                <button onClick={() => setCart((c) => setQty(c, line.product.id, line.qty + 1, availableFor(line.product, stock)))} disabled={atStockLimit(line, stock)} className="h-9 w-9 lg:h-6 lg:w-6 rounded-md bg-white/8 text-slate-300 text-xs font-bold flex items-center justify-center disabled:opacity-30">+</button>
+                            </div>
+                            <div className="w-16 text-right text-sm font-semibold text-white tabular-nums shrink-0">{formatMoney(line.product.price_cents * line.qty, line.product.currency)}</div>
+                            <button onClick={() => setCart((c) => removeLine(c, line.product.id))} className="px-2 py-2.5 lg:p-0 text-slate-600 hover:text-red-400 transition-colors text-xs">✕</button>
+                        </div>
+                    ))
+                )}
+            </div>
+
+            <div className="border-t border-white/8 px-5 py-4 space-y-4">
+                <div>
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Payment</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                        {METHODS.map((m) => (
+                            <button key={m.value} onClick={() => chooseMethod(m.value)} className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium transition-all ${method === m.value ? 'border-violet-500/60 bg-violet-500/20 text-violet-200' : 'border-white/8 text-slate-400 hover:border-white/16 hover:bg-white/5'}`}>
+                                <span>{m.icon}</span><span>{m.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                    {method === 'cash' && (
+                        <div className="mt-2.5">
+                            <input inputMode="decimal" value={received} onChange={(e) => setReceived(e.target.value)} placeholder="Cash received (optional)" className="w-full rounded-xl border border-white/8 bg-white/5 px-3 py-2 text-sm tabular-nums text-white placeholder-slate-600 outline-none" />
+                            {change !== null && change >= 0 && <p className="mt-1.5 text-xs text-slate-400">Change: <span className="font-semibold text-white">{formatMoney(change)}</span></p>}
+                        </div>
+                    )}
+                    {method === 'credit' && <CreditCustomerFields credit={credit} />}
+                </div>
+                <div className="space-y-1">
+                    <div className="flex justify-between text-xs text-slate-500"><span>Net (ex VAT)</span><span className="tabular-nums">{formatMoney(totals.subtotal_cents)}</span></div>
+                    {totals.tax_cents > 0 && <div className="flex justify-between text-xs text-slate-500"><span>VAT {tenantRateBps / 100}%</span><span className="tabular-nums">{formatMoney(totals.tax_cents)}</span></div>}
+                    <div className="flex justify-between text-base font-bold text-white pt-1 border-t border-white/8"><span>Total</span><span className="tabular-nums">{formatMoney(totals.total_cents)}</span></div>
+                </div>
+                {saleError && <p className="text-xs text-red-400">{saleError}</p>}
+                <button onClick={completeSaleNow} disabled={cart.lines.length === 0 || completing} className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 py-3.5 font-bold text-white text-sm tracking-wide shadow-lg shadow-indigo-500/25 hover:opacity-95 active:scale-[0.99] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                    {completing ? 'Processing…' : `Charge ${formatMoney(totals.total_cents)}`}
+                </button>
+            </div>
+        </>
+    );
+
     return (
-        <div className="flex h-screen flex-col pos-bg text-white overflow-hidden">
+        <div className="flex h-dvh flex-col pos-bg text-white overflow-hidden">
             <header className="flex items-center justify-between px-4 py-3 border-b border-white/8 shrink-0">
                 <div className="flex items-center gap-3">
                     <SyncBadge />
@@ -236,87 +324,38 @@ export function WorkshopTill({
                 </section>
 
                 {/* RIGHT: job card + cart */}
-                <section className="sidebar-retail flex h-full w-80 xl:w-96 shrink-0 flex-col border-l border-white/6">
-                    <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
-                        <div>
-                            <h2 className="font-bold text-white tracking-tight">Job Card</h2>
-                            {itemCount > 0 && <p className="text-xs text-slate-400 mt-0.5">{itemCount} item{itemCount !== 1 ? 's' : ''}</p>}
-                        </div>
-                        {cart.lines.length > 0 && <button onClick={() => setCart(emptyCart)} className="text-xs text-slate-500 hover:text-red-400 transition-colors">Clear</button>}
-                    </div>
+                {/* RIGHT: order — a sidebar on a wide screen, a bottom sheet on a phone or small tablet */}
+                <aside className="sidebar-retail hidden h-full w-80 xl:w-96 shrink-0 flex-col border-l border-white/6 lg:flex">
+                    {renderCart()}
+                </aside>
 
-                    {/* Workshop-specific fields */}
-                    <div className="px-5 pt-3 pb-2 border-b border-white/8 space-y-2">
-                        <div>
-                            <label className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Customer name</label>
-                            <input className="mt-1 w-full rounded-xl border border-white/8 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-violet-500/50" placeholder="e.g. Tariro Moyo" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                            <div>
-                                <label className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Job ref</label>
-                                <input className="mt-1 w-full rounded-xl border border-white/8 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-violet-500/50" placeholder="WS-001" value={jobRef} onChange={(e) => setJobRef(e.target.value)} />
+                {/* Phone: floating pill, then the order as a sheet */}
+                {itemCount > 0 && !showCartSheet && (
+                    <button
+                        onClick={() => setShowCartSheet(true)}
+                        className="fixed bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-full px-5 py-3 text-white shadow-xl lg:hidden btn-retail"
+                    >
+                        <span className="text-sm font-bold">🚗 {itemCount} item{itemCount !== 1 ? 's' : ''}</span>
+                        <span className="font-semibold text-sm">· {formatMoney(totals.total_cents)}</span>
+                    </button>
+                )}
+                {showCartSheet && (
+                    <div
+                        className="fixed inset-0 z-40 flex items-end bg-black/60 backdrop-blur-sm lg:hidden anim-fade-in"
+                        onClick={() => setShowCartSheet(false)}
+                    >
+                        {/* A column of its own: the list scrolls, the payment and charge button stay put at the bottom */}
+                        <div
+                            className="sidebar-retail flex max-h-[88dvh] w-full flex-col rounded-t-3xl ring-1 ring-white/10 anim-slide-up"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="flex shrink-0 justify-center pt-3 pb-1">
+                                <div className="h-1 w-10 rounded-full bg-white/15" />
                             </div>
-                            <div>
-                                <label className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Asset / vehicle</label>
-                                <input className="mt-1 w-full rounded-xl border border-white/8 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-violet-500/50" placeholder="ABC 1234" value={assetDesc} onChange={(e) => setAssetDesc(e.target.value)} />
-                            </div>
+                            {renderCart()}
                         </div>
                     </div>
-
-                    <div className="flex-1 overflow-y-auto px-5 py-3 space-y-2">
-                        {cart.lines.length === 0 ? (
-                            <div className="mt-10 flex flex-col items-center gap-3 text-center">
-                                <div className="h-14 w-14 rounded-2xl bg-white/5 flex items-center justify-center text-2xl ring-1 ring-white/8">🔩</div>
-                                <p className="text-sm text-slate-500">Add services or parts above</p>
-                            </div>
-                        ) : (
-                            cart.lines.map((line) => (
-                                <div key={line.product.id} className="flex items-center gap-3 rounded-xl bg-white/5 px-3 py-2.5 ring-1 ring-white/6">
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-medium text-white truncate">{line.product.name}</div>
-                                        <div className="text-xs text-slate-400 mt-0.5">{formatMoney(line.product.price_cents, line.product.currency)} ea.</div>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 shrink-0">
-                                        <button onClick={() => setCart((c) => setQty(c, line.product.id, line.qty - 1))} className="h-6 w-6 rounded-md bg-white/8 text-slate-300 text-xs font-bold flex items-center justify-center">−</button>
-                                        <span className="w-5 text-center text-sm font-semibold text-white tabular-nums">{line.qty}</span>
-                                        <button onClick={() => setCart((c) => setQty(c, line.product.id, line.qty + 1, availableFor(line.product, stock)))} disabled={atStockLimit(line, stock)} className="h-6 w-6 rounded-md bg-white/8 text-slate-300 text-xs font-bold flex items-center justify-center disabled:opacity-30">+</button>
-                                    </div>
-                                    <div className="w-16 text-right text-sm font-semibold text-white tabular-nums shrink-0">{formatMoney(line.product.price_cents * line.qty, line.product.currency)}</div>
-                                    <button onClick={() => setCart((c) => removeLine(c, line.product.id))} className="text-slate-600 hover:text-red-400 transition-colors text-xs">✕</button>
-                                </div>
-                            ))
-                        )}
-                    </div>
-
-                    <div className="border-t border-white/8 px-5 py-4 space-y-4">
-                        <div>
-                            <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Payment</p>
-                            <div className="grid grid-cols-2 gap-1.5">
-                                {METHODS.map((m) => (
-                                    <button key={m.value} onClick={() => chooseMethod(m.value)} className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium transition-all ${method === m.value ? 'border-violet-500/60 bg-violet-500/20 text-violet-200' : 'border-white/8 text-slate-400 hover:border-white/16 hover:bg-white/5'}`}>
-                                        <span>{m.icon}</span><span>{m.label}</span>
-                                    </button>
-                                ))}
-                            </div>
-                            {method === 'cash' && (
-                                <div className="mt-2.5">
-                                    <input inputMode="decimal" value={received} onChange={(e) => setReceived(e.target.value)} placeholder="Cash received (optional)" className="w-full rounded-xl border border-white/8 bg-white/5 px-3 py-2 text-sm tabular-nums text-white placeholder-slate-600 outline-none" />
-                                    {change !== null && change >= 0 && <p className="mt-1.5 text-xs text-slate-400">Change: <span className="font-semibold text-white">{formatMoney(change)}</span></p>}
-                                </div>
-                            )}
-                            {method === 'credit' && <CreditCustomerFields credit={credit} />}
-                        </div>
-                        <div className="space-y-1">
-                            <div className="flex justify-between text-xs text-slate-500"><span>Net (ex VAT)</span><span className="tabular-nums">{formatMoney(totals.subtotal_cents)}</span></div>
-                            {totals.tax_cents > 0 && <div className="flex justify-between text-xs text-slate-500"><span>VAT {tenantRateBps / 100}%</span><span className="tabular-nums">{formatMoney(totals.tax_cents)}</span></div>}
-                            <div className="flex justify-between text-base font-bold text-white pt-1 border-t border-white/8"><span>Total</span><span className="tabular-nums">{formatMoney(totals.total_cents)}</span></div>
-                        </div>
-                        {saleError && <p className="text-xs text-red-400">{saleError}</p>}
-                        <button onClick={completeSaleNow} disabled={cart.lines.length === 0 || completing} className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 py-3.5 font-bold text-white text-sm tracking-wide shadow-lg shadow-indigo-500/25 hover:opacity-95 active:scale-[0.99] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-                            {completing ? 'Processing…' : `Charge ${formatMoney(totals.total_cents)}`}
-                        </button>
-                    </div>
-                </section>
+                )}
             </div>
         </div>
     );
