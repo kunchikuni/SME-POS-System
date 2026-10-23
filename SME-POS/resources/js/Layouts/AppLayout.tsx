@@ -131,7 +131,10 @@ export default function AppLayout({ children }: PropsWithChildren) {
         )}
 
         {/* Main column */}
-        <div className="flex min-h-screen flex-1 flex-col">
+        {/* min-w-0: a flex child won't shrink below its content by default, so a wide table
+            stretched this whole column (and the header with the profile menu) past a phone's
+            screen. With it the column stays screen-wide and the table scrolls in its own wrapper. */}
+        <div className="flex min-h-screen min-w-0 flex-1 flex-col">
           <header className="flex items-center justify-between gap-3 border-b border-hairline bg-surface px-4 py-3 lg:px-6">
             <div className="flex items-center gap-3">
               <button

@@ -10,12 +10,14 @@ export function SettingsTabs({ active }: { active: "general" | "branding" | "acc
     ] as const;
 
     return (
-        <div className="mt-4 flex gap-1 border-b border-hairline">
+        // overflow-x-auto: on a phone the four tabs are wider than the screen; the strip scrolls
+        // within itself instead of stretching the whole page sideways.
+        <div className="mt-4 flex gap-1 overflow-x-auto border-b border-hairline">
             {tabs.map((t) => (
                 <Link
                     key={t.key}
                     to={t.to}
-                    className={`border-b-2 px-4 py-2.5 text-sm font-medium ${
+                    className={`shrink-0 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium ${
                         active === t.key
                             ? "border-brand-600 text-ink"
                             : "border-transparent text-muted hover:text-ink"

@@ -110,7 +110,7 @@ export default function ProductsIndex() {
             {total} product{total !== 1 ? "s" : ""} · manage your catalogue
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <a href={api.products.export()} className="btn-secondary text-sm">Export CSV</a>
           {/* The only way into Categories (sidebar "Inventory" lands here) — the
               page existed, with suggested categories, but nothing linked to it. */}

@@ -44,14 +44,14 @@ export default function PaymentBanner({ access }: { access: AccessInfo | undefin
       <div className="flex items-center gap-3">
         <Link
           to={PAYMENTS_PATH}
-          className="rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-600"
+          className="rounded-lg bg-brand-500 px-3 py-2.5 text-xs font-semibold text-white hover:bg-brand-600"
         >
           {notice.cta}
         </Link>
         {!blocked && (
           <button
             onClick={() => { writeDismissed(notice.title); setDismissed(notice.title); }}
-            className="text-xs font-medium underline-offset-2 hover:underline"
+            className="-my-1 px-2 py-2.5 text-xs font-medium underline-offset-2 hover:underline"
           >
             Dismiss
           </button>
