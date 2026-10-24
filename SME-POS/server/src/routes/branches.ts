@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { db } from '../lib/db.js';
 import { canAddBranch } from '../domain/billing/entitlementService.js';
 import { withTenantLock } from '../lib/tenantLock.js';
+import { defaultTableRows, ensureDefaultTables } from '../domain/restaurant.js';
 import type { HonoVars } from '../lib/context.js';
 import { branchKind } from '../domain/businessTypes.js';
 export const branchRoutes = new Hono<{ Variables: HonoVars }>();
@@ -29,7 +30,10 @@ branchRoutes.post('/', async (ctx) => {
   const b = await withTenantLock(t.id, async (tx) => {
     const now = await tx.branch.count({ where: { tenantId: t.id, deletedAt: null } });
     if (!canAddBranch(t, now)) return null;
-    return tx.branch.create({ data: { id: crypto.randomUUID(), tenantId: t.id, name: d.name, address: d.address ?? null, mode: d.mode } });
+    const created = await tx.branch.create({ data: { id: crypto.randomUUID(), tenantId: t.id, name: d.name, address: d.address ?? null, mode: d.mode } });
+    // A restaurant branch opens to its floor plan: give it tables to take orders on (domain/restaurant.ts).
+    if (created.mode === 'restaurant') await tx.restaurantTable.createMany({ data: defaultTableRows(t.id, created.id) });
+    return created;
   });
   if (!b) return overLimit();
   return ctx.json(b, 201);
@@ -41,16 +45,23 @@ branchRoutes.patch('/:id', async (ctx) => {
   if (!branch) return ctx.json({ message: 'Not found.' }, 404);
   const d = z.object({ name: z.string().min(1).optional(), address: z.string().nullable().optional(), mode: z.enum(['retail','restaurant','hardware','workshop']).optional(), isActive: z.boolean().optional(), isDefault: z.literal(true).optional() }).parse(await ctx.req.json());
   const { isDefault, ...fields } = d;
+  // Switching a branch TO restaurant mode gives it tables if it has never had any. Under the business lock, so two
+  // switches at once can't both find none and both make a set.
+  const becameRestaurant = fields.mode === 'restaurant' && branch.mode !== 'restaurant';
+  const seedTables = () => becameRestaurant ? withTenantLock(t.id, (tx) => ensureDefaultTables(tx, t.id, branch.id)) : Promise.resolve(0);
   // Exactly one default per tenant: promoting this branch demotes the rest in
   // the same transaction. (Only `true` is accepted — "un-defaulting" would
   // leave the tenant with none.)
   if (!isDefault) {
-    return ctx.json(await db.branch.update({ where: { id: branch.id }, data: fields }));
+    const updated = await db.branch.update({ where: { id: branch.id }, data: fields });
+    await seedTables();
+    return ctx.json(updated);
   }
   const [, updated] = await db.$transaction([
     db.branch.updateMany({ where: { tenantId: t.id, isDefault: true, NOT: { id: branch.id } }, data: { isDefault: false } }),
     db.branch.update({ where: { id: branch.id }, data: { ...fields, isDefault: true } }),
   ]);
+  await seedTables();
   return ctx.json(updated);
 });
 branchRoutes.delete('/:id', async (ctx) => {

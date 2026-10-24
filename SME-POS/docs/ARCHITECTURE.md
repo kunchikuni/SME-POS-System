@@ -120,7 +120,7 @@ A finished sale never changes. That removes the other big class of conflicts: sa
 - **Inventory:** `stock_movements` (the ledger), `stock_levels` (cache).
 - **Sales:** `sales` (client UUID, offline `occurred_at`, status), `sale_lines`, `payments` (tender label + `amount_cents`), `void_requests`.
 - **Credit:** `customers` (`balance_cents` cache), `customer_payments` (repayment ledger).
-- **Restaurant:** `tables`, `kitchen_orders`.
+- **Restaurant:** `tables`, `kitchen_orders`. A restaurant till opens to its floor plan, and an order starts by tapping a table, so a restaurant branch is given ten tables (T1–T10, `server/src/domain/restaurant.ts`) when it is created: at sign-up, when a branch is added as a restaurant, or when a branch is switched to restaurant mode (once only — a branch that has ever had tables is left alone, so removed tables do not come back). The floor plan also has a **Takeaway** button for an order with no table (a counter order or one to go): the sale has no `table_id`, still goes to the kitchen, and the dashboard's Kitchen page shows it as "Takeaway". There is not yet a dashboard page to rename, add or remove tables.
 - **Operations:** `tasks`, `payroll_runs`, `payslips`, `fiscal_devices`, `enquiries`.
 
 Every till-writable row has a client-generated UUID primary key, so offline records have stable ids.

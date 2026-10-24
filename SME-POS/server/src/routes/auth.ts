@@ -16,6 +16,7 @@ import { issueHandoff, redeemHandoff } from '../lib/handoff.js';
 import { LOGIN_FAILURE_LIMIT, clientIp, loginFailures, rateLimitsDisabled, tooManyRequests } from '../lib/rateLimit.js';
 import { BUSINESS_TYPES, BUSINESS_TYPE_KEYS, businessTypeFor } from '../domain/businessTypes.js';
 import { accessSummary } from '../domain/billing/entitlementService.js';
+import { defaultTableRows } from '../domain/restaurant.js';
 import { normalizePhone } from '../lib/phone.js';
 import type { HonoVars } from '../lib/context.js';
 
@@ -219,6 +220,9 @@ const registerHandler = async (ctx: Context<{ Variables: HonoVars }>) => {
             db.category.createMany({
                 data: type.categories.map((name) => ({ id: crypto.randomUUID(), tenantId, name })),
             }),
+            // A restaurant opens to its floor plan, and an order starts by tapping a table: start it with
+            // some (domain/restaurant.ts), or its till opens to "No tables yet" with nothing to tap.
+            ...(type.tillMode === 'restaurant' ? [db.restaurantTable.createMany({ data: defaultTableRows(tenantId, branchId) })] : []),
             db.user.create({
                 data: {
                     id: userId,

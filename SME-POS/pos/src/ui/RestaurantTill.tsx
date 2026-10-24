@@ -117,7 +117,11 @@ export function RestaurantTill({
             const key = t.section ?? 'Floor';
             (groups.get(key) ?? groups.set(key, []).get(key)!).push(t);
         }
-        return [...groups.entries()];
+        // Tables are stored by id, so as they come they are in no order at all (T7, T2, T10...). Natural order, so T2 comes before T10.
+        const natural = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+        return [...groups.entries()]
+            .map(([section, list]) => [section, [...list].sort((a, b) => natural(a.name, b.name))] as [string, Table[]])
+            .sort(([a], [b]) => natural(a, b));
     }, [tables]);
 
     /** Tap or scan: adds one, unless the cart already holds everything on hand. */
@@ -224,12 +228,26 @@ export function RestaurantTill({
                         <span className="text-xs text-slate-500">{tables.filter(t => t.is_active).length} tables</span>
                     </div>
 
+                    {/* No table: a customer at the counter, or an order to go. Always there, so a restaurant can take an order
+                        even before it has a single table set up. (The order, the kitchen ticket and the receipt all cope with no table.) */}
+                    <button
+                        onClick={() => { setTable(null); setCart(emptyCart()); setView('catalog'); }}
+                        className="mb-6 flex w-full items-center gap-4 rounded-2xl bg-orange-500/10 px-5 py-4 text-left ring-1 ring-orange-500/30 transition-all hover:bg-orange-500/15 hover:ring-orange-500/50 active:scale-[0.99]"
+                    >
+                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-orange-500/20 text-2xl">🥡</span>
+                        <span className="min-w-0 flex-1">
+                            <span className="block text-base font-bold text-white">Takeaway</span>
+                            <span className="block text-xs text-slate-400">Counter or to go — no table</span>
+                        </span>
+                        <span className="text-slate-500">→</span>
+                    </button>
+
                     {sections.length === 0 ? (
-                        <div className="mt-24 flex flex-col items-center gap-4 text-center anim-fade-in">
+                        <div className="mt-10 flex flex-col items-center gap-4 text-center anim-fade-in">
                             <div className="h-16 w-16 rounded-2xl bg-white/4 flex items-center justify-center text-3xl ring-1 ring-white/8">🪑</div>
                             <div>
-                                <p className="font-semibold text-slate-400">No tables yet</p>
-                                <p className="mt-1 text-sm text-slate-600">Add tables in the dashboard — they'll appear here.</p>
+                                <p className="font-semibold text-slate-400">No tables set up for this branch</p>
+                                <p className="mt-1 text-sm text-slate-600">You can still take orders as Takeaway.</p>
                             </div>
                         </div>
                     ) : (
@@ -277,7 +295,7 @@ export function RestaurantTill({
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
                 <div>
                     <h2 className="font-bold text-white tracking-tight">
-                        {table ? `Table ${table.name}` : 'Order'}
+                        {table ? `Table ${table.name}` : 'Takeaway order'}
                     </h2>
                     {itemCount > 0 && (
                         <p className="text-xs text-slate-400 mt-0.5">{itemCount} item{itemCount !== 1 ? 's' : ''}</p>
@@ -385,14 +403,12 @@ export function RestaurantTill({
                                 <h1 className="text-base font-bold text-white leading-tight">{device.tenant.name}</h1>
                                 <p className="text-xs text-slate-500">{device.branch.name} · {shift.cashierName}</p>
                             </div>
-                            {table && (
-                                <button
-                                    onClick={() => setView('floor')}
-                                    className="flex items-center gap-1.5 rounded-full bg-orange-500/15 px-3 py-1 text-xs font-semibold text-orange-300 ring-1 ring-orange-500/30 hover:bg-orange-500/25 transition-colors"
-                                >
-                                    🪑 Table {table.name} · change
-                                </button>
-                            )}
+                            <button
+                                onClick={() => setView('floor')}
+                                className="flex items-center gap-1.5 rounded-full bg-orange-500/15 px-3 py-1 text-xs font-semibold text-orange-300 ring-1 ring-orange-500/30 hover:bg-orange-500/25 transition-colors"
+                            >
+                                {table ? `🪑 Table ${table.name} · change` : '🥡 Takeaway · change'}
+                            </button>
                         </div>
                         <div className="flex flex-wrap items-center gap-3">
                             <SyncBadge />
