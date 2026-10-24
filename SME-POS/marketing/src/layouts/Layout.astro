@@ -1,0 +1,37 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = "WivaePOS — The smart way to run your business. Online or off.",
+  description = "Offline-first point of sale for Zimbabwean SMEs. Sales, inventory, staff, and reporting across every device and branch — built to keep selling through load-shedding and dropped signal.",
+} = Astro.props;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#ffffff" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta name="twitter:card" content="summary" />
+    <title>{title}</title>
+
+    <!-- No web fonts: the page uses the same font stack as the sign-up page (see
+         --font-sans in styles/global.css), so nothing is downloaded before text
+         appears — faster on a weak connection, and the two pages match.
+         There is no dark theme here either: the site is always light, whatever
+         theme a visitor chose in the dashboard. -->
+  </head>
+  <body class="bg-canvas text-ink">
+    <slot />
+  </body>
+</html>

@@ -1,95 +1,63 @@
 # Wivae
 
-Offline-first, multi-tenant point of sale for SMEs.
+Offline-first, multi-tenant point of sale for SMEs — retail, restaurant,
+hardware and workshop businesses, each on its own subdomain.
 
 The design lives in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — read it first.
 
 ## Stack
 
-Laravel 12 · Inertia + React 19 + TypeScript · Tailwind 4 · Supabase Postgres · Redis/Horizon.
+| Part | Where | What |
+|---|---|---|
+| API server | `server/` | Node 22 · Hono · Prisma 7 (`@prisma/adapter-pg`) · Zod · cookie sessions |
+| Dashboard | `resources/js/` | React 19 SPA · React Router 7 · Vite 6 · Tailwind 4 |
+| Till (POS) | `pos/` | React PWA · Dexie (IndexedDB) · `vite-plugin-pwa` · works offline |
+| Marketing site | `marketing/` | Astro 5, fully static |
+| Database | `prisma/schema.prisma` | Supabase Postgres (used as plain Postgres) |
 
-## Local setup
+One Node process serves the API, the dashboard and the till in production
+(see the root `Dockerfile`); the marketing site deploys separately.
+
+## Getting started
+
+Full, step-by-step setup (environment files, database, troubleshooting) is in
+**[SETUP.md](SETUP.md)**. The short version:
 
 ```bash
-composer install
 npm install
-cp .env.example .env
-php artisan key:generate
-
-# Point *.wivae.test at 127.0.0.1 (hosts file or dnsmasq), then:
-php artisan migrate        # applied by you — see "Ways of working" in the arch doc
-npm run dev
-php artisan serve --host=wivae.test --port=80
+cp .env.example .env && cp server/.env.example server/.env   # then fill in DATABASE_URL + APP_KEY
+npx prisma generate
+npx prisma db push
+npm run db:seed
+npm run dev:all
 ```
 
-Visit `http://wivae.test/register`, create a store, and you'll be handed to
-`http://<your-subdomain>.wivae.test/login`.
+`dev:all` starts the API (`:3000`), dashboard (`:5173`), till (`:5174`) and
+marketing site (`:4321`). Workspaces live at `<name>.localhost` — no
+hosts-file edits:
+
+- Sign up a new business: `http://localhost:5173/register`
+- Seeded demo dashboard: `http://demo.localhost:5173/login` (`owner@demo.test` / `password`)
+- Demo till: `http://demo.localhost:5174/pos/`
+
+Deploying to production: **[DEPLOY.md](DEPLOY.md)**.
+
+## Common commands
+
+```bash
+npm run dev:all        # everything, for local development
+npm run pos:test       # till tests (Vitest) — cart, sync engine, PINs, receipts
+npm run pos:check      # typecheck the till
+npm run build          # typecheck + build the dashboard (to public/)
+npm run pos:build      # build the till PWA (to public/pos/)
+npm run server:build   # compile the API (to server/dist/)
+npm run db:studio      # browse the database
+```
 
 ## Ways of working
 
-- No commits to `main`. Feature branches → PR → Cowork review → merge.
-- Migrations are committed as files and applied by the team, not by automation.
-- One phase per branch. This is `feat/foundation` (Phase 1).
-
-## Phase 1 — what's here
-
-Tenancy spine and the onboarding→dashboard vertical slice:
-
-- Subdomain multi-tenancy (`ResolveTenant`, `TenantContext`, `BelongsToTenant`).
-- Tenant signup provisioning tenant + owner + default branch + 7-day trial in one transaction.
-- Staff roles (`owner/manager/cashier/waiter`) with an `administer` gate.
-- Brand-as-config (`config/brand.php`) — the white-label seam.
-- Dashboard shell with trial banner; near-empty dashboard is the Phase 1 exit state.
-- Feature tests for the onboarding slice.
-
-Fortify wiring is expected from the standard install (login page,
-sessions/password-reset tables).
-
-## Phase 2 — what's here (`feat/catalog`)
-
-Catalogue and the inventory ledger — the phase that proves stock-as-ledger:
-
-- **Ledger:** `stock_movements` (append-only) + `stock_levels` (cache). `StockService`
-  is the single writer; every movement and its cache update happen in one
-  transaction, and the cache is always rebuildable from the ledger via `rebuild()`.
-- **Products & categories:** CRUD, per-tenant unique SKU, money as integer cents.
-- **Opening stock** is an `initial` ledger entry, never a field on the product.
-- **CSV import** runs on Horizon via `ImportProductsCsv`, which re-binds tenant
-  context inside the job (the `InteractsWithTenant` trait — the same pattern the
-  Phase 3 sync jobs will use).
-- **Tests** prove the ledger sums correctly, that two offline sales never conflict,
-  that the cache equals a full rebuild, and that reads are tenant-scoped.
-
-Run the ledger proofs specifically:
-
-```bash
-php artisan test --filter=StockLedger
-```
-
-## Faster workflow: `bin/wivae`
-
-A guarded helper so the team rules are enforced by the tool, not by memory. It
-never commits or pushes to `main`, never commits secrets, and never touches the
-database — it only moves files and opens PRs for Cowork.
-
-```bash
-bin/wivae new catalog          # start feat/catalog off the latest main
-#  …edit files…
-bin/wivae ship "add catalog"   # commit + push + open a PR for review
-
-# or step by step:
-bin/wivae save "message" [paths…]
-bin/wivae push
-bin/wivae pr "title"
-bin/wivae status
-```
-
-Optional, so PRs auto-request the reviewer:
-
-```bash
-export COWORK_REVIEWER=<github-handle-or-team>   # e.g. in your shell profile
-```
-
-Requires the GitHub CLI (`gh`) for one-command PRs; without it, `pr` prints a
-compare link to open the PR by hand. Windows: run under WSL or Git Bash. Add an
-alias if you like: `alias wivae="./bin/wivae"`.
+- No commits straight to `main`: feature branch → pull request → review → merge.
+- Database changes: edit `prisma/schema.prisma`, then apply with
+  `npx prisma db push` — this database has no migration history (see SETUP.md).
+  Schema changes are applied by a person, never by automation.
+- When a decision in `docs/ARCHITECTURE.md` changes, update it in the same PR.

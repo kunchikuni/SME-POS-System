@@ -1,7 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSyncStatus } from './useSyncStatus';
+import { TasksButton } from './TasksButton';
+import { syncManager } from '../sync/syncManager';
 import type { TenantMode } from '../types/contract';
 import { getAppTheme, setAppTheme, type AppTheme } from '../pos/appTheme';
+import { promptInstall, useInstallState } from '../pwa/installPrompt';
+import { applyUpdate, useUpdateAvailable } from '../pwa/updates';
 
 /** Live connectivity + outbox indicator, shown in the till header. */
 export function SyncBadge() {
@@ -45,6 +49,237 @@ export function SettingsChangedBanner() {
         </div>
     );
 }
+
+/** How long "Later" hides the update notice before offering it again. */
+const UPDATE_SNOOZE_MS = 60 * 60 * 1000;
+
+/**
+ * "A new version is ready" — one floating card for the whole till app
+ * (mounted once in App, so it also shows on the pairing and PIN screens).
+ *
+ * Updating reloads the page, and the cart lives in React state — so this
+ * never updates on its own (`registerType: 'prompt'`), it says so plainly,
+ * and "Later" only snoozes it for an hour rather than hiding it for the
+ * rest of the day. Queued sales are safe either way: they're in IndexedDB.
+ *
+ * Replaces UpdateAvailableBanner: a thin strip in each till's header that
+ * listened for a one-time DOM event and so never appeared when the update
+ * arrived while the pairing/PIN screen was showing, and whose "Later" hid it
+ * until the next reload.
+ */
+export function UpdateNotice() {
+    const available = useUpdateAvailable();
+    const [snoozedUntil, setSnoozedUntil] = useState(0);
+    const [updating, setUpdating] = useState(false);
+    const [, forceRender] = useState(0);
+
+    // Re-show once the snooze runs out.
+    useEffect(() => {
+        if (!snoozedUntil) return;
+        const timer = setTimeout(() => forceRender((n) => n + 1), Math.max(0, snoozedUntil - Date.now()));
+        return () => clearTimeout(timer);
+    }, [snoozedUntil]);
+
+    if (!available || Date.now() < snoozedUntil) return null;
+
+    function update() {
+        setUpdating(true);
+        void applyUpdate();
+    }
+
+    return (
+        <div
+            role="status"
+            aria-live="polite"
+            className="fixed inset-x-0 bottom-4 z-[60] flex justify-center px-4 anim-slide-up"
+        >
+            <div className="pos-bg flex w-full max-w-md items-start gap-3 rounded-2xl p-4 shadow-2xl ring-1 ring-white/10">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-[0_0_16px_rgba(124,58,237,0.45)]">
+                    {/* up-arrow-in-circle */}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden>
+                        <path d="M12 19V5M5 12l7-7 7 7" />
+                    </svg>
+                </div>
+                <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-white">Update ready</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-slate-400">
+                        A new version of Wivae POS is ready. Updating reloads the till, so finish the
+                        sale in progress first — queued sales are kept.
+                    </p>
+                    <div className="mt-3 flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={update}
+                            disabled={updating}
+                            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-indigo-500/25 transition-opacity hover:opacity-90 disabled:opacity-70"
+                        >
+                            {updating && <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white" />}
+                            {updating ? 'Updating…' : 'Update now'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setSnoozedUntil(Date.now() + UPDATE_SNOOZE_MS)}
+                            disabled={updating}
+                            className="rounded-xl px-3 py-2 text-xs font-medium text-slate-400 transition-colors hover:bg-white/6 hover:text-slate-200"
+                        >
+                            Later
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * Brief toast confirming the app shell has been cached and the till can now
+ * cold-start with no network. Auto-dismisses after 4 s — there is no action
+ * to take, just a useful confidence signal for a newly provisioned device.
+ */
+export function OfflineReadyToast() {
+    const [visible, setVisible] = useState(false);
+
+    useEffect(() => {
+        function onOfflineReady() {
+            setVisible(true);
+            setTimeout(() => setVisible(false), 4000);
+        }
+        window.addEventListener('pwa:offline-ready', onOfflineReady);
+        return () => window.removeEventListener('pwa:offline-ready', onOfflineReady);
+    }, []);
+
+    if (!visible) return null;
+
+    return (
+        <div
+            aria-live="polite"
+            className="pointer-events-none fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300 shadow-lg backdrop-blur-sm"
+        >
+            ✓ Wivae POS is ready to work offline
+        </div>
+    );
+}
+
+/**
+ * Warns the cashier when one or more outbox entries have failed 5+ times —
+ * a "stuck sale" that will never auto-retry via the normal backoff schedule.
+ * Prompts them to contact support rather than silently losing the data.
+ */
+export function OutboxStuckBanner() {
+    const status = useSyncStatus();
+    const [dismissed, setDismissed] = useState(false);
+
+    const stuck = status?.outboxStuck === true;
+
+    if (!stuck || dismissed) return null;
+
+    return (
+        <div className="flex items-center justify-between gap-3 border-b border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-300 backdrop-blur-sm">
+            <span>⚠ One or more sales could not sync after several attempts. Contact support.</span>
+            <div className="flex shrink-0 items-center gap-3">
+                <button
+                    onClick={() => void syncManager.retryNow()}
+                    disabled={status?.syncing}
+                    className="font-medium text-red-200 hover:text-white disabled:opacity-50"
+                >
+                    {status?.syncing ? 'Retrying…' : 'Retry now'}
+                </button>
+                <button onClick={() => setDismissed(true)} className="text-red-500 hover:text-red-300">
+                    Dismiss
+                </button>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * Payment notice. In the grace period it is a heads-up (selling AND syncing carry
+ * on) with the date sync will pause. Once the grace period is over the server
+ * pauses sync: the till keeps selling and keeps every sale on the device — this
+ * says so, so a cashier isn't left wondering why nothing is syncing — and offers
+ * a Retry for after the owner has renewed. See sync/subscription.ts.
+ */
+export function SubscriptionBanner() {
+    const status = useSyncStatus();
+    const [dismissed, setDismissed] = useState(false);
+
+    const sub = status?.subscription;
+    if (!sub || sub.state === 'active') return null;
+
+    if (sub.state === 'grace') {
+        if (dismissed) return null;
+        const by = sub.graceEndsAt
+            ? new Date(sub.graceEndsAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+            : null;
+        return (
+            <div role="status" className="flex items-center justify-between gap-3 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-sm text-amber-200 backdrop-blur-sm">
+                <span>Your subscription has ended. Renew{by ? ` by ${by}` : ' soon'} to keep syncing — you can keep selling.</span>
+                <button onClick={() => setDismissed(true)} className="shrink-0 text-amber-400 hover:text-amber-200">Dismiss</button>
+            </div>
+        );
+    }
+
+    const waiting = status?.pending ?? 0;
+    return (
+        <div role="alert" className="flex items-center justify-between gap-3 border-b border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-200 backdrop-blur-sm">
+            <span>
+                Your subscription has ended. Sales are saved on this device{waiting > 0 ? ` (${waiting} waiting)` : ''} and will sync once you renew.
+            </span>
+            <button
+                onClick={() => void syncManager.retryNow()}
+                disabled={status?.syncing}
+                className="shrink-0 font-medium text-red-100 hover:text-white disabled:opacity-50"
+            >
+                {status?.syncing ? 'Checking…' : 'Retry'}
+            </button>
+        </div>
+    );
+}
+
+/**
+ * Brief confirmation after a background sync actually clears something out
+ * of the outbox — "3 sales synced". Auto-dismisses after 4s, same as
+ * OfflineReadyToast: this is passive reassurance for a cashier who's been
+ * offline for a while and wants to know it's catching up, not a warning
+ * needing action, so it shouldn't linger or need a dismiss button the way
+ * OutboxStuckBanner does.
+ *
+ * Compares lastSyncBatch's timestamp against the last one this component
+ * has already shown, rather than just checking "is count > 0" — status
+ * objects re-render on every sync tick (pending count, online state, etc.),
+ * and without that comparison this would re-show the same old batch's
+ * count on every unrelated status update after the toast had already
+ * finished its first appearance.
+ */
+export function SyncedToast() {
+    const status = useSyncStatus();
+    const [visible, setVisible] = useState(false);
+    const [count, setCount] = useState(0);
+    const shownAtRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        const batch = status?.lastSyncBatch;
+        if (!batch || batch.at === shownAtRef.current) return;
+
+        shownAtRef.current = batch.at;
+        setCount(batch.count);
+        setVisible(true);
+        const timer = setTimeout(() => setVisible(false), 4000);
+        return () => clearTimeout(timer);
+    }, [status?.lastSyncBatch]);
+
+    if (!visible) return null;
+
+    return (
+        <div
+            aria-live="polite"
+            className="pointer-events-none fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300 shadow-lg backdrop-blur-sm"
+        >
+            ✓ {count} {count === 1 ? 'sale' : 'sales'} synced
+        </div>
+    );
+}
+
 
 export function Splash({
                            title,
@@ -145,35 +380,131 @@ export function ThemeToggle() {
  * something available from a device that's only ever authenticated as "some
  * paired till," regardless of whose PIN is currently active on it.
  */
-export function ModePill({ mode }: { mode: TenantMode }) {
+export function ModePill({ mode, kind }: { mode: TenantMode; kind?: { icon: string; label: string } }) {
+    const labels: Record<TenantMode, { icon: string; label: string }> = {
+        retail:     { icon: '🛍',  label: 'Retail' },
+        restaurant: { icon: '🍽',  label: 'Restaurant' },
+        hardware:   { icon: '🔧', label: 'Hardware' },
+        workshop:   { icon: '🔩', label: 'Workshop' },
+    };
+    // `kind` is what the business actually is ("Butchery", "Pharmacy"…). The
+    // mode alone can't say: a butchery, bottle store and pharmacy all run the
+    // retail till, so they all used to read "Retail". Without `kind` (a till
+    // paired before the server sent it), fall back to the mode's own label.
+    const current = kind ?? labels[mode] ?? labels.retail;
+
     return (
         <div
             className="mode-pill"
             role="status"
-            aria-label={`POS mode: ${mode === 'retail' ? 'Retail' : 'Restaurant'}`}
-            title="Set by your manager in Settings"
+            aria-label={`POS mode: ${current.label}`}
+            title="Set by your manager in Settings → Branches"
         >
-            <div
-                className={`mode-pill__track ${
-                    mode === 'retail' ? 'mode-pill__track--retail' : 'mode-pill__track--resto'
-                }`}
-            />
+            <span className="mode-pill__btn" style={{ color: '#fff' }}>
+                <span>{current.icon}</span>
+                <span>{current.label}</span>
+            </span>
+        </div>
+    );
+}
 
-            <span
-                className="mode-pill__btn"
-                style={{ color: mode === 'retail' ? '#fff' : 'rgba(255,255,255,0.45)' }}
-            >
-        <span>🛍</span>
-        <span>Retail</span>
-      </span>
+const HEADER_BTN = 'rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-colors';
+const END_SHIFT_BTN = 'rounded-lg px-3 py-1.5 text-xs font-medium text-red-400/80 hover:bg-red-500/10 hover:text-red-300 transition-colors';
 
-            <span
-                className="mode-pill__btn"
-                style={{ color: mode === 'restaurant' ? '#fff' : 'rgba(255,255,255,0.45)' }}
-            >
-        <span>🍽</span>
-        <span>Restaurant</span>
-      </span>
+/**
+ * The till header's actions, as text buttons in the same style as
+ * RetailTill's (the Hardware/Workshop tills used unlabelled emoji).
+ *
+ * Receive stock and Record payment are owner/manager-only — the same gate as
+ * RetailTill: a delivery or a repayment has no payment total to cross-check
+ * it the way a sale does, so it needs the trust of a manual adjustment.
+ */
+export function TillHeaderButtons({ isManager, cashierId, onTasks, onReceiveStock, onRecordPayment, onPrinter, onEndShift }: {
+    isManager: boolean;
+    cashierId: string | null;
+    onTasks: () => void;
+    onReceiveStock: () => void;
+    onRecordPayment: () => void;
+    onPrinter: () => void;
+    onEndShift: () => void;
+}) {
+    return (
+        <>
+            <TasksButton cashierId={cashierId} onClick={onTasks} />
+            {isManager && <button onClick={onReceiveStock} className={HEADER_BTN}>Receive stock</button>}
+            {isManager && <button onClick={onRecordPayment} className={HEADER_BTN}>Record payment</button>}
+            <button onClick={onPrinter} className={HEADER_BTN}>Printer</button>
+            <button onClick={onEndShift} className={END_SHIFT_BTN}>End shift</button>
+        </>
+    );
+}
+
+/*
+ * Install UI — native only.
+ *
+ * Installing is the browser's job, and once installed so is "Open in app"
+ * (Chrome/Edge show it in the address bar whenever the till is open in a
+ * normal tab). So these only ever offer the browser's own one-tap install,
+ * and only when the browser has actually offered it (beforeinstallprompt,
+ * captured at startup in pwa/installPrompt.ts). No step-by-step "look for
+ * the icon" instructions: when there's no native offer they simply don't
+ * render. iPhone/iPad Safari has no install prompt at all, so there the card
+ * shows one line pointing at Add to Home Screen instead of nothing.
+ */
+
+/** Compact install button for the till header. */
+export function InstallAppButton() {
+    const install = useInstallState();
+    if (install.standalone || !install.canPrompt) return null;
+
+    return (
+        <button
+            type="button"
+            onClick={() => void promptInstall()}
+            className="flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 px-2.5 py-1 text-xs font-semibold text-blue-300 shadow-sm transition-all hover:bg-blue-500/20 active:scale-95"
+            title="Install Wivae POS as an app"
+        >
+            <span className="text-sm">📲</span>
+            <span className="hidden sm:inline">Install</span>
+        </button>
+    );
+}
+
+/**
+ * Install card for the entry screens (pairing, PIN login) — the first thing
+ * someone sees after the marketing site's "Install the till app" link, so the
+ * install happens before setup. Highlighted when that link brought them here
+ * (?install=1).
+ */
+export function InstallAppCard() {
+    const install = useInstallState();
+    if (install.standalone) return null;
+    if (!install.canPrompt && !install.ios) return null; // nothing native to offer
+
+    return (
+        <div
+            className={`mt-4 flex items-center gap-3 rounded-2xl p-4 text-left ring-1 ${
+                install.requested ? 'bg-blue-500/15 ring-blue-400/40' : 'bg-white/5 ring-white/10'
+            }`}
+        >
+            <span className="text-2xl" aria-hidden>📲</span>
+            <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-white">Install the till app</p>
+                <p className="text-xs text-slate-400">
+                    {install.canPrompt
+                        ? 'Opens full-screen from your home screen and works offline.'
+                        : 'In Safari, tap Share, then Add to Home Screen.'}
+                </p>
+            </div>
+            {install.canPrompt && (
+                <button
+                    type="button"
+                    onClick={() => void promptInstall()}
+                    className="shrink-0 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500 active:scale-95"
+                >
+                    Install
+                </button>
+            )}
         </div>
     );
 }

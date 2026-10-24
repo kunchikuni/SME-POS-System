@@ -1,0 +1,103 @@
+name: ci
+
+# Runs on every pull request, and on pushes to the long-lived branches.
+# Pipeline: install → Prisma client → type-check (dashboard, till, server) →
+# unit tests (dashboard + server, till) → production builds (dashboard, till, marketing).
+#
+# This file lives at the REPOSITORY root on purpose. The project is the SME-POS/
+# folder inside the repository, and GitHub only reads workflows from the root's
+# .github/ -- they used to sit in SME-POS/.github/, where they never ran at all
+# (the pull request showed no checks). Hence `working-directory: SME-POS` below.
+#
+# Not run here: ESLint. `npm run lint` and eslint.config.js exist, but eslint and
+# the plugins that config imports are not dependencies of the project, so the
+# step could only fail. Add them to package.json, then add a lint step back.
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+      - master
+      - 'feat/**'
+  pull_request:
+    branches:
+      - develop
+      - main
+      - master
+
+permissions:
+  contents: read
+
+# A newer push to the same branch makes the older run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: SME-POS
+
+jobs:
+  ci:
+    name: Type-check, test & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: SME-POS/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # server/src/generated/prisma/ is .gitignored; tsc and the server tests need
+      # it. Generating a client reads the schema only -- it never connects -- but
+      # prisma.config.ts wants a DATABASE_URL to exist, so give it a placeholder.
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+
+      # ── Type checking ────────────────────────────────────────────────────────
+      - name: Type-check dashboard
+        run: npx tsc --noEmit
+
+      - name: Type-check POS
+        run: npm run pos:check
+
+      - name: Type-check POS tests
+        run: npm run pos:check:test
+
+      - name: Type-check server
+        run: npx tsc -p server/tsconfig.json --noEmit
+
+      # ── Unit tests ───────────────────────────────────────────────────────────
+      # Billing, plan limits, reminders and the dashboard's helpers.
+      - name: Run dashboard and server tests
+        run: npx vitest run resources server
+
+      - name: Run POS unit tests
+        run: npm run pos:test
+
+      # ── Build verification ───────────────────────────────────────────────────
+      # Building each app confirms the bundler can resolve the whole dependency
+      # graph -- catches import errors, dynamic imports and asset references that
+      # tsc misses.
+      - name: Build dashboard SPA
+        run: npm run build
+
+      - name: Build POS PWA
+        run: npm run pos:build
+
+      - name: Build marketing site
+        run: npm run marketing:build

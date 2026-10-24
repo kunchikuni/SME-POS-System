@@ -14,6 +14,13 @@ export interface ReceiptContext {
   sale: SalePayload;
   tenantName: string;
   branchName: string;
+  branchAddress: string | null;
+  branchPhone: string | null;
+  cashierName: string;
+  /** Short, local reference shown before fiscal sync — see Receipt.tsx for
+   * why this is deliberately NOT the same as a ZIMRA fiscal receipt number. */
+  receiptRef: string;
+  fiscal: { verified: boolean; taxpayerTin: string | null; vatNumber: string | null };
 }
 
 export interface DeviceCapabilities {

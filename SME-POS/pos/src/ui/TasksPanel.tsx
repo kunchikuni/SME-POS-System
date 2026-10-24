@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError, OfflineError } from '../sync/apiClient';
 import type { TillTask } from '../types/contract';
+import { markSeen, notifyTasksChanged } from '../pos/taskAlerts';
 
 /**
  * Tasks on the till: read + complete only. Fetched live from the network on
@@ -10,6 +11,26 @@ import type { TillTask } from '../types/contract';
  * Neutral dark-glass styling — reached from both RetailTill and
  * RestaurantTill, not a mode-defining moment.
  */
+/**
+ * A due date is a calendar day (the server stores it at noon UTC so the day
+ * is the same in every timezone) — so read the day out of the string rather
+ * than converting the instant, and compare it with this device's today.
+ */
+function dueBadge(dueAt: string | null): { label: string; tone: string } | null {
+    if (!dueAt) return null;
+    const day = dueAt.slice(0, 10);
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const dayMs = (d: string) => Date.parse(`${d}T00:00:00Z`);
+    const diff = Math.round((dayMs(day) - dayMs(today)) / 86_400_000);
+    if (diff < 0) return { label: diff === -1 ? 'Overdue · yesterday' : `Overdue · ${-diff} days`, tone: 'bg-red-500/10 text-red-300 ring-red-500/25' };
+    if (diff === 0) return { label: 'Due today', tone: 'bg-amber-500/10 text-amber-300 ring-amber-500/25' };
+    if (diff === 1) return { label: 'Due tomorrow', tone: 'bg-white/5 text-slate-300 ring-white/10' };
+    const label = new Date(`${day}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+    return { label: `Due ${label}`, tone: 'bg-white/5 text-slate-400 ring-white/10' };
+}
+
 export function TasksPanel({
                                cashierId,
                                onClose,
@@ -32,6 +53,8 @@ export function TasksPanel({
         try {
             const res = await api.tasks();
             setTasks(res.tasks);
+            // Opening the list is what "seeing" a task means — clears the button's new-task badge.
+            markSeen(cashierId, res.tasks);
         } catch (e) {
             setTasks(null);
             setError(
@@ -50,6 +73,7 @@ export function TasksPanel({
             await api.completeTask(task.id, cashierId);
             setTasks((t) => t?.filter((x) => x.id !== task.id) ?? null);
             onTasksChanged?.();
+            notifyTasksChanged(); // the button's open count drops
         } catch {
             setError('Couldn’t mark that done — check the connection and try again.');
         } finally {
@@ -101,10 +125,13 @@ export function TasksPanel({
                                     <div className="min-w-0 flex-1">
                                         <p className="text-sm font-medium text-white">{t.title}</p>
                                         {t.notes && <p className="mt-0.5 text-xs text-slate-400">{t.notes}</p>}
-                                        <p className="mt-0.5 text-xs text-slate-500">
-                                            {t.assignee ? t.assignee : 'Unassigned'}
-                                            {t.due_at && ` · due ${new Date(t.due_at).toLocaleDateString()}`}
-                                        </p>
+                                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                                            {(() => {
+                                                const due = dueBadge(t.due_at);
+                                                return due && <span className={`rounded-full px-2 py-0.5 font-medium ring-1 ring-inset ${due.tone}`}>{due.label}</span>;
+                                            })()}
+                                            <span>{t.assignee ?? 'Unassigned'}</span>
+                                        </div>
                                     </div>
                                 </li>
                             ))}

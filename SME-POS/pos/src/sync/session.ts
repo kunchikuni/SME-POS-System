@@ -65,12 +65,23 @@ export function mergeSessionInfo(
 
   const changed =
     current.branch.mode !== branch.mode ||
+    current.branch.address !== branch.address ||
+    current.branch.phone !== branch.phone ||
     current.tenant.currency !== tenant.currency ||
     current.tenant.taxRateBps !== tenant.taxRateBps ||
-    JSON.stringify(current.tenant.theme) !== JSON.stringify(tenant.theme);
+    JSON.stringify(current.tenant.theme) !== JSON.stringify(tenant.theme) ||
+    JSON.stringify(current.tenant.fiscal) !== JSON.stringify(tenant.fiscal);
 
   if (changed) {
-    saveSession({ ...current, tenant, branch: { ...current.branch, mode: branch.mode } });
+    // Full replacement, not cherry-picked fields — simpler, and correct by
+    // construction as more session fields get added later (this has already
+    // had to be extended once, for mode; no reason to keep doing that by hand).
+    saveSession({ ...current, tenant, branch: { ...current.branch, ...branch } });
+  } else if (JSON.stringify(current.branch.kind ?? null) !== JSON.stringify(branch.kind ?? null)) {
+    // The branch's display name ("Butchery") is cosmetic: store it so a till
+    // paired before it existed picks it up, but don't report a settings
+    // change — that raises the "reload" notice, which a label doesn't merit.
+    saveSession({ ...current, branch: { ...current.branch, kind: branch.kind } });
   }
 
   return changed;

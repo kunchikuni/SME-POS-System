@@ -1,7 +1,9 @@
-import { Head, Link } from "@inertiajs/react";
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import JsBarcode from "jsbarcode";
-import AppLayout from "../../Layouts/AppLayout";
+import AppLayout from "../../Layouts/AppLayout.js";
+import { usePageTitle, useQuery } from "../../lib/hooks.js";
+import { api } from "../../lib/api.js";
 
 interface Item {
   id: string;
@@ -11,20 +13,26 @@ interface Item {
   price: string;
 }
 
-interface Props {
-  products: Item[];
-  [key: string]: unknown;
-}
-
 /**
  * Printable shelf/product labels. Each product gets a Code 128 barcode drawn
  * into an SVG at print resolution, laid out on a grid that fits standard A4
  * label sheets. Quantity is per-product so a merchant can print one label for a
  * slow mover and thirty for a fast one.
  */
-export default function Barcodes({ products }: Props) {
+export default function Barcodes() {
+  usePageTitle("Barcodes");
+  const { data, loading } = useQuery(() => api.products.barcodes(), []);
+  const products: Item[] = (data as any)?.products ?? [];
+
   const [copies, setCopies] = useState(1);
-  const [selected, setSelected] = useState<Set<string>>(new Set(products.map((p) => p.id)));
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Select all when data loads
+  useEffect(() => {
+    if (products.length > 0) {
+      setSelected(new Set(products.map((p) => p.id)));
+    }
+  }, [products.length]);
 
   const chosen = products.filter((p) => selected.has(p.id));
 
@@ -36,10 +44,18 @@ export default function Barcodes({ products }: Props) {
     });
   }
 
+  if (loading) {
+    return (
+      <AppLayout>
+        <div className="mt-8 flex justify-center">
+          <span className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout>
-      <Head title="Barcodes" />
-
       <div className="print:hidden">
         <div className="flex items-center justify-between">
           <div>
@@ -48,7 +64,7 @@ export default function Barcodes({ products }: Props) {
               Products without a barcode fall back to their SKU, so everything is labellable.
             </p>
           </div>
-          <Link href="/products" className="text-sm text-muted hover:text-ink">
+          <Link to="/products" className="text-sm text-muted hover:text-ink">
             ← Back to inventory
           </Link>
         </div>
@@ -136,7 +152,6 @@ function Label({ item }: { item: Item }) {
       });
       setFailed(false);
     } catch {
-      // A code JsBarcode can't encode shouldn't blank the whole sheet.
       setFailed(true);
     }
   }, [item.code]);
@@ -146,7 +161,7 @@ function Label({ item }: { item: Item }) {
       <div className="truncate text-xs font-medium text-black">{item.name}</div>
       <div className="text-xs text-slate-500">${item.price}</div>
       {failed ? (
-        <div className="py-3 text-xs text-red-600">Can’t encode “{item.code}”</div>
+        <div className="py-3 text-xs text-red-600">Can't encode "{item.code}"</div>
       ) : (
         <svg ref={ref} className="mx-auto mt-1 max-w-full" />
       )}

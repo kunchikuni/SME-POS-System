@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, ApiError, OfflineError } from '../sync/apiClient';
 import { clearSession, saveSession, type DeviceSession } from '../sync/session';
+import { InstallAppCard } from './Shared';
 
 /**
  * One-time device provisioning. The operator enters (or scans) the token
@@ -11,22 +12,42 @@ export function PairDevice({ onPaired }: { onPaired: (session: DeviceSession) =>
   const [token, setToken] = useState('');
   const [busy,  setBusy]  = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const autoStarted = useRef(false);
 
-  async function pair() {
+  // One-click setup from the dashboard's "Get selling" checklist opens the
+  // till at /pos/#pair=<token>. The fragment never reaches a server or a log;
+  // wipe it from the address bar immediately (so it isn't left in history or
+  // a copied URL), then pair with it exactly as if it had been pasted.
+  useEffect(() => {
+    if (autoStarted.current) return; // StrictMode double-run in dev
+    autoStarted.current = true;
+    const fromLink = new URLSearchParams(window.location.hash.slice(1)).get('pair');
+    if (!fromLink) return;
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    setToken(fromLink);
+    void pair(fromLink);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function pair(value: string = token) {
+    const candidate = value.trim();
     setBusy(true);
     setError(null);
 
     saveSession({
-      token: token.trim(),
+      token: candidate,
       device: { id: '', name: '' },
-      branch: { id: '', name: '', mode: 'retail' },
-      tenant: { name: '', theme: {}, currency: 'USD', taxRateBps: 0 },
+      branch: { id: '', name: '', mode: 'retail', address: null, phone: null },
+      tenant: {
+        name: '', theme: {}, currency: 'USD', taxRateBps: 0,
+        fiscal: { verified: false, taxpayerTin: null, vatNumber: null },
+      },
     });
 
     try {
       const s = await api.session();
       const full: DeviceSession = {
-        token: token.trim(),
+        token: candidate, // not the `token` state — stale when pairing from a link
         device: s.device,
         branch: s.branch,
         tenant: s.tenant,
@@ -89,13 +110,15 @@ export function PairDevice({ onPaired }: { onPaired: (session: DeviceSession) =>
           )}
 
           <button
-            onClick={pair}
+            onClick={() => void pair()}
             disabled={busy || token.trim() === ''}
             className="btn-retail mt-5 w-full rounded-xl py-3.5 font-bold text-white text-sm tracking-wide"
           >
             {busy ? 'Pairing…' : 'Pair device'}
           </button>
         </div>
+
+        <InstallAppCard />
       </div>
     </div>
   );

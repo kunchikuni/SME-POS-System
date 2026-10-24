@@ -1,58 +1,125 @@
-import { Head, router, useForm } from "@inertiajs/react";
-import type { FormEvent } from "react";
-import AppLayout from "../../Layouts/AppLayout";
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import AppLayout from "../../Layouts/AppLayout.js";
+import { usePageTitle, useQuery, useMutation } from "../../lib/hooks.js";
+import { api } from "../../lib/api.js";
 
 interface Category { id: string; name: string; products_count: number; }
 
-export default function CategoriesIndex({ categories }: { categories: Category[] }) {
-  const form = useForm({ name: "" });
+export default function CategoriesIndex() {
+  usePageTitle("Categories");
+  const { data, loading, refetch } = useQuery(() => api.categories.list(), []);
+  const [name, setName] = useState("");
 
-  function add(e: FormEvent) {
+  const categories: Category[] = (data?.categories ?? []) as Category[];
+
+  const { submit: createCategory, loading: creating, errors } = useMutation(
+    (n: string) => api.categories.create(n),
+    {
+      onSuccess: () => {
+        setName("");
+        refetch();
+      },
+    }
+  );
+
+  const { submit: deleteCategory } = useMutation(
+    (id: string) => api.categories.delete(id),
+    { onSuccess: () => { refetch(); refetchSuggestions(); } }
+  );
+
+  // Ready-made categories for this kind of business that aren't added yet
+  // (new businesses already start with them; this covers older ones and
+  // anything deleted since).
+  const { data: suggestionData, refetch: refetchSuggestions } = useQuery(() => api.categories.suggestions(), []);
+  const suggestions = suggestionData?.suggestions ?? [];
+
+  const { submit: addSuggestions, loading: addingSuggestions } = useMutation(
+    (names?: string[]) => api.categories.addSuggestions(names),
+    { onSuccess: () => { refetch(); refetchSuggestions(); } }
+  );
+
+  function add(e: React.FormEvent) {
     e.preventDefault();
-    form.post("/categories", { onSuccess: () => form.reset("name") });
+    if (name.trim()) createCategory(name.trim());
   }
 
   return (
     <AppLayout>
-      <Head title="Categories" />
-      <h1 className="font-display text-xl font-semibold tracking-tight">Categories</h1>
+      <Link to="/products" className="text-xs text-muted hover:text-ink">← Products</Link>
+      <h1 className="mt-1 font-display text-xl font-semibold tracking-tight">Categories</h1>
 
       <form onSubmit={add} className="mt-6 flex max-w-md gap-2">
         <input
-          value={form.data.name}
-          onChange={(e) => form.setData("name", e.target.value)}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
           placeholder="New category"
           className="flex-1 rounded-lg border border-hairline bg-surface px-3 py-2 text-sm focus-visible:border-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30"
         />
         <button
           type="submit"
-          disabled={form.processing || !form.data.name}
+          disabled={creating || !name.trim()}
           className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
         >
           Add
         </button>
       </form>
-      {form.errors.name && <p className="mt-1 text-xs text-red-600">{form.errors.name}</p>}
+      {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name}</p>}
 
-      <ul className="mt-6 max-w-md divide-y divide-hairline overflow-hidden rounded-xl border border-hairline bg-surface">
-        {categories.map((c) => (
-          <li key={c.id} className="flex items-center justify-between px-4 py-3 text-sm">
-            <span className="font-medium">{c.name}</span>
-            <span className="flex items-center gap-3 text-muted">
-              <span className="text-xs">{c.products_count} products</span>
+      {suggestions.length > 0 && (
+        <div className="mt-4 max-w-md rounded-xl border border-hairline bg-surface p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-medium text-ink">
+              Suggested for {suggestionData?.businessType ?? "your business"}
+            </p>
+            <button
+              onClick={() => addSuggestions(undefined)}
+              disabled={addingSuggestions}
+              className="text-xs font-semibold text-brand-600 hover:underline disabled:opacity-50"
+            >
+              Add all
+            </button>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {suggestions.map((s) => (
               <button
-                onClick={() => confirm(`Remove ${c.name}?`) && router.delete(`/categories/${c.id}`)}
-                className="text-xs hover:text-red-600"
+                key={s}
+                onClick={() => addSuggestions([s])}
+                disabled={addingSuggestions}
+                className="rounded-full border border-hairline px-3 py-1 text-xs text-ink hover:border-brand-500 hover:bg-brand-50 disabled:opacity-50"
               >
-                Remove
+                + {s}
               </button>
-            </span>
-          </li>
-        ))}
-        {categories.length === 0 && (
-          <li className="px-4 py-6 text-center text-sm text-muted">No categories yet.</li>
-        )}
-      </ul>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="mt-8 flex justify-center">
+          <span className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+        </div>
+      ) : (
+        <ul className="mt-6 max-w-md divide-y divide-hairline overflow-hidden rounded-xl border border-hairline bg-surface">
+          {categories.map((c) => (
+            <li key={c.id} className="flex items-center justify-between px-4 py-3 text-sm">
+              <span className="font-medium">{c.name}</span>
+              <span className="flex items-center gap-3 text-muted">
+                <span className="text-xs">{c.products_count} products</span>
+                <button
+                  onClick={() => confirm(`Remove ${c.name}?`) && deleteCategory(c.id)}
+                  className="text-xs hover:text-red-600"
+                >
+                  Remove
+                </button>
+              </span>
+            </li>
+          ))}
+          {categories.length === 0 && (
+            <li className="px-4 py-6 text-center text-sm text-muted">No categories yet.</li>
+          )}
+        </ul>
+      )}
     </AppLayout>
   );
 }
